@@ -1,0 +1,338 @@
+import React, { useState } from 'react';
+import {
+  LayoutList,
+  GitCommit,
+  Search,
+  FileText,
+  Settings,
+  LayoutDashboard,
+  ChevronDown,
+  ChevronRight,
+  ShieldCheck,
+  Zap,
+  Droplets,
+  TreePine,
+  HeartHandshake,
+  FileCheck,
+  Trophy,
+} from 'lucide-react';
+import { CATEGORIAS_SISTEMA } from '../../config/categories';
+import { useTheme } from '../../context/ThemeContext';
+
+export type MainNavView =
+  | 'vista-general'
+  | 'trazabilidad'
+  | 'busqueda-rapida'
+  | 'reportes'
+  | 'configuracion'
+  | 'dashboard';
+
+interface SidebarProps {
+  currentView: MainNavView;
+  selectedCategoryDashboard: string | null;
+  onNavigate: (view: MainNavView, categoryId?: string | null) => void;
+  openNewTicketModal: () => void;
+  onOpenCitizenPortal?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({
+  currentView,
+  selectedCategoryDashboard,
+  onNavigate,
+  onOpenCitizenPortal,
+}) => {
+  const { isDarkMode } = useTheme();
+  const [dashboardSubmenuOpen, setDashboardSubmenuOpen] = useState(true);
+
+  const getCategoryIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'Zap':
+        return <Zap className="w-4 h-4" />;
+      case 'Droplets':
+        return <Droplets className="w-4 h-4" />;
+      case 'TreePine':
+        return <TreePine className="w-4 h-4" />;
+      case 'HeartHandshake':
+        return <HeartHandshake className="w-4 h-4" />;
+      case 'FileCheck':
+        return <FileCheck className="w-4 h-4" />;
+      case 'Trophy':
+        return <Trophy className="w-4 h-4" />;
+      default:
+        return <LayoutDashboard className="w-4 h-4" />;
+    }
+  };
+
+  return (
+    <aside
+      id="main-sidebar-nav"
+      className={`w-64 border-r flex flex-col shrink-0 h-screen sticky top-0 select-none z-30 transition-colors duration-200 ${
+        isDarkMode
+          ? 'bg-slate-900 border-slate-800 text-slate-200'
+          : 'bg-white border-slate-200/90 text-slate-700'
+      }`}
+    >
+      {/* Brand Header */}
+      <div className={`h-20 px-6 border-b flex items-center gap-3 ${
+        isDarkMode ? 'border-slate-800' : 'border-slate-100'
+      }`}>
+        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-xs">
+          <ShieldCheck className="w-5 h-5" />
+        </div>
+        <div>
+          <div className="flex items-center gap-1.5 text-blue-600 font-bold text-base tracking-tight leading-tight">
+            <span>Junta Comunal</span>
+          </div>
+          <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-400'}`}>
+            Gestión de Incidencias
+          </span>
+        </div>
+      </div>
+
+      {/* Navigation Options */}
+      <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-1 scrollbar-thin">
+        {/* 1. Vista General (Primera Opción) */}
+        <button
+          type="button"
+          id="nav-vista-general"
+          onClick={() => onNavigate('vista-general')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+            currentView === 'vista-general'
+              ? isDarkMode
+                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-medium'
+              : isDarkMode
+              ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <LayoutList
+            className={`w-4.5 h-4.5 shrink-0 ${
+              currentView === 'vista-general'
+                ? 'text-blue-500'
+                : isDarkMode
+                ? 'text-slate-400'
+                : 'text-slate-400'
+            }`}
+          />
+          <span className="truncate">Vista General</span>
+        </button>
+
+        {/* 2. Trazabilidad del Ticket (Segunda Opción) */}
+        <button
+          type="button"
+          id="nav-trazabilidad"
+          onClick={() => onNavigate('trazabilidad')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+            currentView === 'trazabilidad'
+              ? isDarkMode
+                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-medium'
+              : isDarkMode
+              ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <GitCommit
+            className={`w-4.5 h-4.5 shrink-0 ${
+              currentView === 'trazabilidad'
+                ? 'text-blue-500'
+                : isDarkMode
+                ? 'text-slate-400'
+                : 'text-slate-400'
+            }`}
+          />
+          <span className="truncate">Trazabilidad</span>
+        </button>
+
+        {/* 3. Búsqueda y Visualización Rápida (Consulta) */}
+        <button
+          type="button"
+          id="nav-busqueda-rapida"
+          onClick={() => onNavigate('busqueda-rapida')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+            currentView === 'busqueda-rapida'
+              ? isDarkMode
+                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-medium'
+              : isDarkMode
+              ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Search
+            className={`w-4.5 h-4.5 shrink-0 ${
+              currentView === 'busqueda-rapida'
+                ? 'text-blue-500'
+                : isDarkMode
+                ? 'text-slate-400'
+                : 'text-slate-400'
+            }`}
+          />
+          <span className="truncate">Consulta Rápida</span>
+        </button>
+
+        {/* 4. Reportes */}
+        <button
+          type="button"
+          id="nav-reportes"
+          onClick={() => onNavigate('reportes')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+            currentView === 'reportes'
+              ? isDarkMode
+                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-medium'
+              : isDarkMode
+              ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <FileText
+            className={`w-4.5 h-4.5 shrink-0 ${
+              currentView === 'reportes'
+                ? 'text-blue-500'
+                : isDarkMode
+                ? 'text-slate-400'
+                : 'text-slate-400'
+            }`}
+          />
+          <span className="truncate">Reportes</span>
+        </button>
+
+        {/* 5. Configuración */}
+        <button
+          type="button"
+          id="nav-configuracion"
+          onClick={() => onNavigate('configuracion')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+            currentView === 'configuracion'
+              ? isDarkMode
+                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-medium'
+              : isDarkMode
+              ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Settings
+            className={`w-4.5 h-4.5 shrink-0 ${
+              currentView === 'configuracion'
+                ? 'text-blue-500'
+                : isDarkMode
+                ? 'text-slate-400'
+                : 'text-slate-400'
+            }`}
+          />
+          <span className="truncate">Configuración</span>
+        </button>
+
+        {/* REGLA FIJA: DASHBOARD SIEMPRE COMO ÚLTIMA OPCIÓN */}
+        <div className="pt-4 mt-2">
+          {/* Main Dashboard Button */}
+          <div className={`rounded-2xl p-4 border transition-colors ${
+            isDarkMode
+              ? 'bg-slate-800/60 border-slate-700/80'
+              : 'bg-slate-50 border-slate-100'
+          }`}>
+            <div className="flex items-center justify-between mb-3">
+              <p
+                onClick={() => onNavigate('dashboard', null)}
+                className={`text-xs font-bold uppercase tracking-widest cursor-pointer transition-colors ${
+                  currentView === 'dashboard' && !selectedCategoryDashboard
+                    ? 'text-blue-500'
+                    : isDarkMode
+                    ? 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
+              >
+                Dashboard
+              </p>
+              <button
+                type="button"
+                onClick={() => setDashboardSubmenuOpen(!dashboardSubmenuOpen)}
+                className={`p-1 rounded-md transition-colors cursor-pointer ${
+                  isDarkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-200/50 text-slate-400'
+                }`}
+              >
+                {dashboardSubmenuOpen ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+
+            {/* Dashboard Submenu (The 6 official categories) */}
+            {dashboardSubmenuOpen && (
+              <ul className={`space-y-1.5 text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                {CATEGORIAS_SISTEMA.map((cat) => {
+                  const isActive =
+                    currentView === 'dashboard' && selectedCategoryDashboard === cat.id;
+
+                  return (
+                    <li
+                      key={cat.id}
+                      id={`nav-dashboard-sub-${cat.id}`}
+                      onClick={() => onNavigate('dashboard', cat.id)}
+                      className={`flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
+                        isActive
+                          ? isDarkMode
+                            ? 'bg-blue-900/50 text-blue-400 font-semibold'
+                            : 'bg-blue-50/80 text-blue-600 font-semibold'
+                          : isDarkMode
+                          ? 'hover:text-blue-400 hover:bg-slate-700/50'
+                          : 'hover:text-blue-600 hover:bg-white/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <div
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: cat.color || '#0066FF' }}
+                        />
+                        <span className="truncate">{cat.nombre}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+                <li
+                  onClick={() => onNavigate('dashboard', null)}
+                  className={`flex items-center gap-1 cursor-pointer italic text-xs pt-1.5 border-t ${
+                    isDarkMode
+                      ? 'border-slate-700 text-slate-400 hover:text-blue-400'
+                      : 'border-slate-200/50 text-slate-400 hover:text-blue-600'
+                  }`}
+                >
+                  <span>Ver todas (6)</span>
+                  <span>→</span>
+                </li>
+              </ul>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* Footer / System Status & Portal Ciudadano Switch */}
+      <div className={`p-4 border-t text-xs space-y-2.5 ${
+        isDarkMode ? 'border-slate-800 bg-slate-900/90 text-slate-400' : 'border-slate-100 bg-white text-slate-400'
+      }`}>
+        {onOpenCitizenPortal && (
+          <button
+            type="button"
+            onClick={onOpenCitizenPortal}
+            id="btn-sidebar-citizen-portal"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold text-xs transition-colors cursor-pointer border border-blue-200/60 dark:border-blue-900/50"
+          >
+            <span>🌐 Ver Portal Ciudadano</span>
+          </button>
+        )}
+        <div className="flex items-center justify-between">
+          <span className={`flex items-center gap-1.5 font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-500'}`}>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            MySQL Centralized
+          </span>
+          <span className="text-[11px] font-mono">v1.3.0</span>
+        </div>
+      </div>
+    </aside>
+  );
+};

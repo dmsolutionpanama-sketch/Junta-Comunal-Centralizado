@@ -1,0 +1,6 @@
+{
+  "name": "Junta Comunal - Gestión de Incidencias",
+  "description": "Portal ciudadano y sistema de gestión de tickets de la Junta Comunal con dashboard de transparencia comunitaria, seguimiento de incidencias, trazabilidad y reportes por sector.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -95,12 +95,16 @@ export interface User {
   cedula?: string;
   telefono?: string;
   sector?: string;
+  direccion?: string;
   genero?: UserGender;
   edad?: number;
   estado?: 'activo' | 'inactivo';
   fechaRegistro?: string;
+  horaRegistro?: string;
+  lugarRegistro?: string;
   ultimoAcceso?: string;
   departamento?: string;
+  notasAdmin?: string;
 }
 
 export interface UserRegistrationInput {
@@ -109,10 +113,59 @@ export interface UserRegistrationInput {
   email: string;
   telefono?: string;
   sector: string;
+  direccion?: string;
   genero: UserGender;
   edad: number;
-  password: string;
+  rol?: UserRole;
+  departamento?: string;
+  lugarRegistro?: string;
+  password?: string;
   confirmPassword?: string;
+}
+
+export type DashboardWidgetId =
+  | 'kpis-primary'
+  | 'chart-category-volume'
+  | 'chart-sector-distribution'
+  | 'chart-status-donut'
+  | 'chart-time-trend'
+  | 'chart-demographics-gender'
+  | 'chart-demographics-age'
+  | 'chart-channels-intake'
+  | 'chart-priority-matrix'
+  | 'chart-sla-performance'
+  | 'table-active-incidents';
+
+export type DashboardPresetId =
+  | 'executive'
+  | 'operations'
+  | 'citizen-care'
+  | 'sla-audit'
+  | 'custom';
+
+export interface DashboardWidgetMeta {
+  id: DashboardWidgetId;
+  title: string;
+  category: 'kpi' | 'distribucion' | 'demografia' | 'operativo' | 'tendencia';
+  description: string;
+  iconName: string;
+  defaultColSpan?: 1 | 2 | 3;
+}
+
+export interface DashboardCustomConfig {
+  activePreset: DashboardPresetId;
+  selectedWidgets: DashboardWidgetId[];
+  columns: 1 | 2 | 3;
+  compactMode: boolean;
+  autoRefresh: boolean;
+}
+
+export type ComparisonDimension = 'sector' | 'categoria' | 'canal' | 'periodo';
+
+export interface ComparisonConfig {
+  dimension: ComparisonDimension;
+  entityA: string;
+  entityB: string;
 }
 
 export interface EmailNotificationLog {

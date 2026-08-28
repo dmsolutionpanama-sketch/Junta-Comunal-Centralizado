@@ -503,6 +503,9 @@ export const ticketService = {
       // Fallback
     }
     const { MOCK_SYSTEM_USERS } = await import('../data/mockData');
+    try {
+      localStorage.setItem('ticketing_system_users_v1', JSON.stringify(MOCK_SYSTEM_USERS));
+    } catch {}
     return MOCK_SYSTEM_USERS;
   },
 
@@ -521,6 +524,82 @@ export const ticketService = {
     }
   },
 
+  async updateUserFull(userId: string, updatedData: Partial<User>): Promise<{ success: boolean; user?: User; message?: string }> {
+    try {
+      const users = await this.getAllUsers();
+      const idx = users.findIndex((u) => u.id === userId);
+      if (idx !== -1) {
+        users[idx] = {
+          ...users[idx],
+          ...updatedData,
+        };
+        localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+        return { success: true, user: users[idx], message: 'Datos de usuario actualizados correctamente.' };
+      }
+      return { success: false, message: 'Usuario no encontrado.' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error al actualizar usuario.' };
+    }
+  },
+
+  async createUserAdmin(input: Partial<User> & { password?: string }): Promise<{ success: boolean; user?: User; message?: string }> {
+    try {
+      const users = await this.getAllUsers();
+      if (input.email) {
+        const existing = users.find((u) => u.email.toLowerCase() === input.email!.toLowerCase());
+        if (existing) {
+          return { success: false, message: 'El correo electrónico ya se encuentra registrado en el sistema.' };
+        }
+      }
+
+      const now = new Date();
+      const fechaStr = now.toISOString().split('T')[0];
+      const horaStr = now.toTimeString().split(' ')[0].substring(0, 5);
+
+      const newUser: User = {
+        id: input.id || `usr-${Date.now()}`,
+        nombre: input.nombre || 'Nuevo Usuario',
+        email: input.email || `usuario-${Date.now()}@juntacomunal.gob.pa`,
+        cedula: input.cedula || '8-000-000',
+        telefono: input.telefono || '+507 6000-0000',
+        sector: input.sector || 'Altos de Las Cumbres',
+        direccion: input.direccion || '',
+        genero: input.genero || 'femenino',
+        edad: input.edad || 30,
+        rol: input.rol || 'usuario',
+        estado: input.estado || 'activo',
+        departamento: input.departamento || 'Atención Ciudadana',
+        lugarRegistro: input.lugarRegistro || 'Sede Central - Despacho',
+        notasAdmin: input.notasAdmin || '',
+        fechaRegistro: fechaStr,
+        horaRegistro: horaStr,
+        ultimoAcceso: `${fechaStr} ${horaStr}`,
+        avatarUrl: input.avatarUrl || `https://images.unsplash.com/photo-${input.genero === 'masculino' ? '1507003211169-0a1dd7228f2d' : '1534528741775-53994a69daeb'}?w=150&auto=format&fit=crop&q=80`,
+      };
+
+      users.unshift(newUser);
+      localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+      return { success: true, user: newUser, message: `Usuario "${newUser.nombre}" registrado exitosamente desde cero.` };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error al registrar usuario.' };
+    }
+  },
+
+  async deleteUser(userId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      let users = await this.getAllUsers();
+      const exists = users.some((u) => u.id === userId);
+      if (!exists) {
+        return { success: false, message: 'Usuario no encontrado.' };
+      }
+      users = users.filter((u) => u.id !== userId);
+      localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+      return { success: true, message: 'Usuario eliminado correctamente del sistema.' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error al eliminar usuario.' };
+    }
+  },
+
   async registerUser(input: any): Promise<{ success: boolean; user?: User; token?: string; message?: string }> {
     try {
       const users = await this.getAllUsers();
@@ -529,6 +608,10 @@ export const ticketService = {
         return { success: false, message: 'El correo electrónico ya se encuentra registrado.' };
       }
 
+      const now = new Date();
+      const fechaStr = now.toISOString().split('T')[0];
+      const horaStr = now.toTimeString().split(' ')[0].substring(0, 5);
+
       const newUser: User = {
         id: `usr-${Date.now()}`,
         nombre: input.nombre,
@@ -536,14 +619,20 @@ export const ticketService = {
         cedula: input.cedula,
         telefono: input.telefono,
         sector: input.sector,
-        genero: input.genero,
-        edad: input.edad,
-        rol: 'ciudadano',
+        direccion: input.direccion || '',
+        genero: input.genero || 'femenino',
+        edad: input.edad || 30,
+        rol: input.rol || 'usuario',
         estado: 'activo',
-        fechaRegistro: new Date().toISOString().split('T')[0],
+        departamento: input.departamento || 'Ciudadanía / Vecinos',
+        lugarRegistro: input.lugarRegistro || 'Portal Web Ciudadano',
+        fechaRegistro: fechaStr,
+        horaRegistro: horaStr,
+        ultimoAcceso: `${fechaStr} ${horaStr}`,
+        avatarUrl: `https://images.unsplash.com/photo-${input.genero === 'masculino' ? '1500648767791-00dcc994a43e' : '1534528741775-53994a69daeb'}?w=150&auto=format&fit=crop&q=80`,
       };
 
-      users.push(newUser);
+      users.unshift(newUser);
       localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
       const token = `jwt-token-${Date.now()}`;
       return { success: true, user: newUser, token, message: 'Ciudadano registrado con éxito en la Junta Comunal.' };

@@ -15,9 +15,12 @@ import {
   HeartHandshake,
   FileCheck,
   Trophy,
+  Shield,
+  Users,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
+import { User } from '../../types';
 
 export type MainNavView =
   | 'vista-general'
@@ -25,11 +28,13 @@ export type MainNavView =
   | 'busqueda-rapida'
   | 'reportes'
   | 'configuracion'
+  | 'mantenimiento-admin'
   | 'dashboard';
 
 interface SidebarProps {
   currentView: MainNavView;
   selectedCategoryDashboard: string | null;
+  currentUser?: User | null;
   onNavigate: (view: MainNavView, categoryId?: string | null) => void;
   openNewTicketModal: () => void;
   onOpenCitizenPortal?: () => void;
@@ -38,30 +43,13 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   currentView,
   selectedCategoryDashboard,
+  currentUser,
   onNavigate,
   onOpenCitizenPortal,
 }) => {
   const { isDarkMode } = useTheme();
   const [dashboardSubmenuOpen, setDashboardSubmenuOpen] = useState(true);
-
-  const getCategoryIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'Zap':
-        return <Zap className="w-4 h-4" />;
-      case 'Droplets':
-        return <Droplets className="w-4 h-4" />;
-      case 'TreePine':
-        return <TreePine className="w-4 h-4" />;
-      case 'HeartHandshake':
-        return <HeartHandshake className="w-4 h-4" />;
-      case 'FileCheck':
-        return <FileCheck className="w-4 h-4" />;
-      case 'Trophy':
-        return <Trophy className="w-4 h-4" />;
-      default:
-        return <LayoutDashboard className="w-4 h-4" />;
-    }
-  };
+  const isSuperiorAdmin = currentUser?.rol === 'administrador';
 
   return (
     <aside
@@ -73,17 +61,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }`}
     >
       {/* Brand Header */}
-      <div className={`h-20 px-6 border-b flex items-center gap-3 ${
-        isDarkMode ? 'border-slate-800' : 'border-slate-100'
-      }`}>
+      <div
+        className={`h-20 px-6 border-b flex items-center gap-3 ${
+          isDarkMode ? 'border-slate-800' : 'border-slate-100'
+        }`}
+      >
         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-xs">
           <ShieldCheck className="w-5 h-5" />
         </div>
         <div>
-          <div className="flex items-center gap-1.5 text-blue-600 font-bold text-base tracking-tight leading-tight">
+          <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-base tracking-tight leading-tight">
             <span>Junta Comunal</span>
           </div>
-          <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-400'}`}>
+          <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400">
             Gestión de Incidencias
           </span>
         </div>
@@ -99,8 +89,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
             currentView === 'vista-general'
               ? isDarkMode
-                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
-                : 'bg-blue-50 text-blue-600 font-medium'
+                ? 'bg-blue-950/60 text-blue-400 font-semibold border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-semibold'
               : isDarkMode
               ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
               : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
@@ -126,8 +116,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
             currentView === 'trazabilidad'
               ? isDarkMode
-                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
-                : 'bg-blue-50 text-blue-600 font-medium'
+                ? 'bg-blue-950/60 text-blue-400 font-semibold border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-semibold'
               : isDarkMode
               ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
               : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
@@ -142,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 : 'text-slate-400'
             }`}
           />
-          <span className="truncate">Trazabilidad</span>
+          <span className="truncate">Trazabilidad & Progreso</span>
         </button>
 
         {/* 3. Búsqueda y Visualización Rápida (Consulta) */}
@@ -153,8 +143,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
             currentView === 'busqueda-rapida'
               ? isDarkMode
-                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
-                : 'bg-blue-50 text-blue-600 font-medium'
+                ? 'bg-blue-950/60 text-blue-400 font-semibold border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-semibold'
               : isDarkMode
               ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
               : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
@@ -180,8 +170,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
             currentView === 'reportes'
               ? isDarkMode
-                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
-                : 'bg-blue-50 text-blue-600 font-medium'
+                ? 'bg-blue-950/60 text-blue-400 font-semibold border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-semibold'
               : isDarkMode
               ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
               : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
@@ -199,7 +189,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="truncate">Reportes</span>
         </button>
 
-        {/* 5. Configuración */}
+        {/* 5. Mantenimiento de Categorías & Roles (SOLO ADMINISTRADOR SUPERIOR) */}
+        {isSuperiorAdmin && (
+          <button
+            type="button"
+            id="nav-mantenimiento-admin"
+            onClick={() => onNavigate('mantenimiento-admin')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+              currentView === 'mantenimiento-admin'
+                ? isDarkMode
+                  ? 'bg-purple-950/60 text-purple-300 font-semibold border border-purple-800/60'
+                  : 'bg-purple-50 text-purple-700 font-semibold border border-purple-200'
+                : isDarkMode
+                ? 'text-purple-300 hover:bg-purple-950/40 hover:text-purple-200'
+                : 'text-purple-700 hover:bg-purple-50/80 hover:text-purple-800'
+            }`}
+          >
+            <div className="flex items-center gap-3 truncate">
+              <Shield className="w-4.5 h-4.5 shrink-0 text-purple-600 dark:text-purple-400" />
+              <span className="truncate">Mantenimiento Admin</span>
+            </div>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 uppercase">
+              Admin
+            </span>
+          </button>
+        )}
+
+        {/* 6. Configuración */}
         <button
           type="button"
           id="nav-configuracion"
@@ -207,8 +223,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
             currentView === 'configuracion'
               ? isDarkMode
-                ? 'bg-blue-950/60 text-blue-400 font-medium border border-blue-900/60'
-                : 'bg-blue-50 text-blue-600 font-medium'
+                ? 'bg-blue-950/60 text-blue-400 font-semibold border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-semibold'
               : isDarkMode
               ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
               : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
@@ -228,12 +244,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* REGLA FIJA: DASHBOARD SIEMPRE COMO ÚLTIMA OPCIÓN */}
         <div className="pt-4 mt-2">
-          {/* Main Dashboard Button */}
-          <div className={`rounded-2xl p-4 border transition-colors ${
-            isDarkMode
-              ? 'bg-slate-800/60 border-slate-700/80'
-              : 'bg-slate-50 border-slate-100'
-          }`}>
+          <div
+            className={`rounded-2xl p-4 border transition-colors ${
+              isDarkMode
+                ? 'bg-slate-800/60 border-slate-700/80'
+                : 'bg-slate-50 border-slate-100'
+            }`}
+          >
             <div className="flex items-center justify-between mb-3">
               <p
                 onClick={() => onNavigate('dashboard', null)}
@@ -251,7 +268,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => setDashboardSubmenuOpen(!dashboardSubmenuOpen)}
                 className={`p-1 rounded-md transition-colors cursor-pointer ${
-                  isDarkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-200/50 text-slate-400'
+                  isDarkMode
+                    ? 'hover:bg-slate-700 text-slate-400'
+                    : 'hover:bg-slate-200/50 text-slate-400'
                 }`}
               >
                 {dashboardSubmenuOpen ? (
@@ -262,12 +281,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             </div>
 
-            {/* Dashboard Submenu (The 6 official categories) */}
+            {/* Dashboard Submenu */}
             {dashboardSubmenuOpen && (
-              <ul className={`space-y-1.5 text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+              <ul
+                className={`space-y-1.5 text-xs ${
+                  isDarkMode ? 'text-slate-300' : 'text-slate-600'
+                }`}
+              >
                 {CATEGORIAS_SISTEMA.map((cat) => {
                   const isActive =
-                    currentView === 'dashboard' && selectedCategoryDashboard === cat.id;
+                    currentView === 'dashboard' &&
+                    selectedCategoryDashboard === cat.id;
 
                   return (
                     <li
@@ -302,7 +326,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       : 'border-slate-200/50 text-slate-400 hover:text-blue-600'
                   }`}
                 >
-                  <span>Ver todas (6)</span>
+                  <span>Ver todas las categorías</span>
                   <span>→</span>
                 </li>
               </ul>
@@ -312,9 +336,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Footer / System Status & Portal Ciudadano Switch */}
-      <div className={`p-4 border-t text-xs space-y-2.5 ${
-        isDarkMode ? 'border-slate-800 bg-slate-900/90 text-slate-400' : 'border-slate-100 bg-white text-slate-400'
-      }`}>
+      <div
+        className={`p-4 border-t text-xs space-y-2.5 ${
+          isDarkMode
+            ? 'border-slate-800 bg-slate-900/90 text-slate-400'
+            : 'border-slate-100 bg-white text-slate-400'
+        }`}
+      >
         {onOpenCitizenPortal && (
           <button
             type="button"
@@ -326,11 +354,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
         <div className="flex items-center justify-between">
-          <span className={`flex items-center gap-1.5 font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-500'}`}>
+          <span
+            className={`flex items-center gap-1.5 font-medium ${
+              isDarkMode ? 'text-slate-300' : 'text-slate-500'
+            }`}
+          >
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            MySQL Centralized
+            Junta Comunal MySQL
           </span>
-          <span className="text-[11px] font-mono">v1.3.0</span>
+          <span className="text-[11px] font-mono">v2.0.0</span>
         </div>
       </div>
     </aside>

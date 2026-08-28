@@ -15,6 +15,8 @@ export interface Category {
   color: string;
   icono: string;
   slaHoras: number;
+  prefijo?: string; // e.g. "ALU", "AGU", "POD", "SOC", "CER", "DEP", "OBR"
+  activa?: boolean;
 }
 
 export interface Reportante {
@@ -74,7 +76,13 @@ export interface Ticket {
   departamento?: string;
 }
 
-export type UserRole = 'administrador' | 'agente' | 'usuario' | 'supervisor';
+export type UserRole =
+  | 'administrador'
+  | 'agente'
+  | 'usuario'
+  | 'supervisor'
+  | 'ciudadano'
+  | 'usuario_reportante';
 
 export type AppTheme = 'high-density' | 'clean-minimal' | 'professional-polish' | 'sleek-interface';
 
@@ -84,6 +92,38 @@ export interface User {
   email: string;
   rol: UserRole;
   avatarUrl?: string;
+  cedula?: string;
+  telefono?: string;
+  sector?: string;
+  genero?: UserGender;
+  edad?: number;
+  estado?: 'activo' | 'inactivo';
+  fechaRegistro?: string;
+  ultimoAcceso?: string;
+  departamento?: string;
+}
+
+export interface UserRegistrationInput {
+  nombre: string;
+  cedula: string;
+  email: string;
+  telefono?: string;
+  sector: string;
+  genero: UserGender;
+  edad: number;
+  password: string;
+  confirmPassword?: string;
+}
+
+export interface EmailNotificationLog {
+  id: string;
+  destinatario: string;
+  asunto: string;
+  tipo: 'nuevo_ticket' | 'cambio_estado' | 'caso_resuelto' | 'bienvenida';
+  ticketId?: string;
+  fechaHora: string;
+  estadoEnvio: 'enviado' | 'simulado' | 'error';
+  cuerpoHtml: string;
 }
 
 export interface AuthState {

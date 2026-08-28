@@ -14,10 +14,13 @@ import {
   Video,
   FileSpreadsheet,
   Paperclip,
+  Compass,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { SECTORES_RESIDENCIA } from '../../config/sectors';
 import { CreateTicketInput, TicketPriority } from '../../types';
+import { GoogleMapLocationPicker } from '../common/GoogleMapLocationPicker';
+import { getCategoryPrefix } from '../../utils/ticketCodeGenerator';
 
 interface NewTicketModalProps {
   isOpen: boolean;
@@ -36,6 +39,8 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
   const [prioridad, setPrioridad] = useState<TicketPriority>('media');
   const [descripcion, setDescripcion] = useState('');
   const [direccionDetallada, setDireccionDetallada] = useState('');
+  const [ubicacionLat, setUbicacionLat] = useState<number>(9.0834);
+  const [ubicacionLng, setUbicacionLng] = useState<number>(-79.5312);
 
   // Reporter data
   const [nombre, setNombre] = useState('');
@@ -55,6 +60,9 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
   const [success, setSuccess] = useState(false);
 
   if (!isOpen) return null;
+
+  const selectedCat = CATEGORIAS_SISTEMA.find((c) => c.id === categoriaId) || CATEGORIAS_SISTEMA[0];
+  const suggestedPrefix = getCategoryPrefix(selectedCat.nombre, selectedCat.id, selectedCat.prefijo);
 
   const handleFileUploadMock = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -100,17 +108,16 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
     setIsLoading(true);
 
     try {
-      const selectedCat = CATEGORIAS_SISTEMA.find((c) => c.id === categoriaId);
       const ticketData: CreateTicketInput = {
         asunto: asunto.trim(),
         categoriaId,
-        categoriaNombre: selectedCat?.nombre || 'General',
+        categoriaNombre: selectedCat.nombre,
         sectorNombre,
         prioridad,
         descripcion: descripcion.trim(),
         direccionDetallada: direccionDetallada.trim(),
-        ubicacionLat: 9.0834,
-        ubicacionLng: -79.5312,
+        ubicacionLat,
+        ubicacionLng,
         reportante: {
           nombre: nombre.trim(),
           cedula: cedula.trim(),
@@ -149,12 +156,17 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
         {/* Modal Header */}
         <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/50 shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-              <Plus className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              Registrar Nuevo Ticket de Incidencia
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+                <Plus className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                Registrar Nuevo Ticket de Incidencia
+              </h2>
+              <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-mono text-[11px] font-bold">
+                Prefijo: {suggestedPrefix}-2025-XXX
+              </span>
+            </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-              Ingrese los detalles del reporte ciudadano y datos del solicitante (Validación Zod activa)
+              Ingrese los detalles del reporte ciudadano y ubique el pin en Google Maps
             </p>
           </div>
           <button
@@ -178,7 +190,7 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
           {success && (
             <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300 text-xs rounded-xl flex items-center gap-2 font-semibold">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>¡Ticket registrado exitosamente en la base de datos!</span>
+              <span>¡Ticket registrado exitosamente! Notificación de correo despachada.</span>
             </div>
           )}
 
@@ -215,7 +227,7 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
                 >
                   {CATEGORIAS_SISTEMA.map((cat) => (
                     <option key={cat.id} value={cat.id}>
-                      {cat.nombre}
+                      {cat.nombre} ({cat.prefijo || 'ALU'})
                     </option>
                   ))}
                 </select>
@@ -269,9 +281,32 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
               />
             </div>
 
+            {/* Google Maps Location & Pin Picker */}
+            <div className="pt-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-red-500" />
+                  Ubicación en Google Maps & Pin Georreferenciado
+                </span>
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-normal">
+                  Búsqueda y coordenadas en vivo
+                </span>
+              </label>
+              <GoogleMapLocationPicker
+                initialLat={ubicacionLat}
+                initialLng={ubicacionLng}
+                initialAddress={direccionDetallada}
+                onLocationChange={({ lat, lng, address }) => {
+                  setUbicacionLat(lat);
+                  setUbicacionLng(lng);
+                  if (address) setDireccionDetallada(address);
+                }}
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Dirección Exacta o Punto de Referencia
+                Dirección Exacta o Punto de Referencia Adicional
               </label>
               <div className="relative">
                 <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
@@ -358,13 +393,26 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
                 </label>
                 <input
                   type="number"
-                  min={1}
-                  max={120}
+                  min="18"
+                  max="110"
                   value={edad}
-                  onChange={(e) => setEdad(Number(e.target.value))}
+                  onChange={(e) => setEdad(parseInt(e.target.value) || 18)}
                   className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Correo Electrónico (Para confirmación y alertas de avance)
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="vecino@comunidad.gob.pa"
+                className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
+              />
             </div>
           </div>
 
@@ -372,54 +420,50 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
               <Paperclip className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              3. Archivos Adjuntos y Evidencias
+              3. Evidencias y Archivos Adjuntos (Fotos, Video, PDF)
             </h3>
 
-            <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-center hover:border-blue-400 transition-colors bg-slate-50/50 dark:bg-slate-800/40">
-              <input
-                type="file"
-                multiple
-                id="modal-file-upload"
-                onChange={handleFileUploadMock}
-                className="hidden"
-                accept="image/*,video/*,.pdf,.doc,.docx"
-              />
-              <label htmlFor="modal-file-upload" className="cursor-pointer flex flex-col items-center">
-                <Upload className="w-6 h-6 text-slate-400 mb-1" />
-                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                  Haga clic para subir fotos, videos o documentos
-                </span>
-                <span className="text-[11px] text-slate-400 mt-0.5">
-                  Formatos soportados: JPG, PNG, MP4, PDF (Máx 15MB)
-                </span>
+            <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-blue-500 rounded-2xl p-6 text-center transition-colors bg-slate-50/50 dark:bg-slate-800/30">
+              <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Arrastre o seleccione archivos de evidencia
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Soporta fotografías (JPG/PNG), videos explicativos (MP4) o cartas/permisos (PDF)
+              </p>
+              <label className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 cursor-pointer shadow-xs">
+                <span>Examinar archivos</span>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,application/pdf"
+                  onChange={handleFileUploadMock}
+                  className="hidden"
+                />
               </label>
             </div>
 
             {attachedFiles.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                 {attachedFiles.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs border border-slate-200 dark:border-slate-700"
+                    className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs"
                   >
-                    <div className="flex items-center gap-1.5 truncate">
-                      {file.tipo === 'foto' ? (
-                        <ImageIcon className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                      ) : file.tipo === 'video' ? (
-                        <Video className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                      ) : (
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      )}
-                      <span className="truncate text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                    <div className="flex items-center gap-2 truncate">
+                      {file.tipo === 'foto' && <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />}
+                      {file.tipo === 'video' && <Video className="w-4 h-4 text-purple-500 shrink-0" />}
+                      {file.tipo === 'documento' && <FileSpreadsheet className="w-4 h-4 text-emerald-500 shrink-0" />}
+                      <span className="truncate font-medium text-slate-700 dark:text-slate-300">
                         {file.nombre}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeAttachment(file.id)}
-                      className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
+                      className="text-slate-400 hover:text-rose-500 p-1"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
@@ -427,26 +471,26 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
             )}
           </div>
 
-          {/* Modal Footer Actions */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3 shrink-0">
+          {/* Submit Actions */}
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              className="px-5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-70"
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
             >
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Guardando...</span>
               ) : (
                 <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Radicar Ticket</span>
+                  <Send className="w-4 h-4" />
+                  <span>Radicar Incidencia ({suggestedPrefix})</span>
                 </>
               )}
             </button>
@@ -456,3 +500,4 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
     </div>
   );
 };
+

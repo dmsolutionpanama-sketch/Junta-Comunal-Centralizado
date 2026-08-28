@@ -3,50 +3,62 @@
     {
       "id": "alumbrado-electrico",
       "nombre": "Alumbrado Eléctrico",
+      "prefijo": "ALU",
       "descripcion": "Averías en luminarias públicas, postes caídos o cables expuestos",
       "color": "#0066FF",
       "icono": "Zap",
-      "slaHoras": 48
+      "slaHoras": 48,
+      "activa": true
     },
     {
       "id": "danos-agua",
       "nombre": "Daños Agua",
+      "prefijo": "AGU",
       "descripcion": "Fugas de agua potable, tuberías rotas, falta de presión o alcantarillado",
       "color": "#0284C7",
       "icono": "Droplets",
-      "slaHoras": 24
+      "slaHoras": 24,
+      "activa": true
     },
     {
       "id": "corte-arboles-poda",
       "nombre": "Corte de Árboles o Poda",
+      "prefijo": "POD",
       "descripcion": "Riesgo de ramas sobre tendido eléctrico, vías públicas o áreas comunales",
       "color": "#16A34A",
       "icono": "TreePine",
-      "slaHoras": 72
+      "slaHoras": 72,
+      "activa": true
     },
     {
       "id": "ayuda-social",
       "nombre": "Ayuda Social",
+      "prefijo": "SOC",
       "descripcion": "Solicitud de asistencia humanitaria, subsidios, alimentos o contingencias",
       "color": "#EA580C",
       "icono": "HeartHandshake",
-      "slaHoras": 48
+      "slaHoras": 48,
+      "activa": true
     },
     {
       "id": "certificaciones-permisos",
       "nombre": "Certificaciones y Permisos",
+      "prefijo": "CER",
       "descripcion": "Trámites de uso de suelo, permisos municipales, certificaciones de residencia",
       "color": "#9333EA",
       "icono": "FileCheck",
-      "slaHoras": 96
+      "slaHoras": 96,
+      "activa": true
     },
     {
       "id": "permisos-ligas-deportivas",
       "nombre": "Permisos para Ligas Deportivas",
+      "prefijo": "DEP",
       "descripcion": "Uso de canchas comunales, torneos deportivos barriales y actividades recreativas",
       "color": "#0D9488",
       "icono": "Trophy",
-      "slaHoras": 72
+      "slaHoras": 72,
+      "activa": true
     }
   ],
   "sectores": [

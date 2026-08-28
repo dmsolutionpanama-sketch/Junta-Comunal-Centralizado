@@ -1,0 +1,715 @@
+import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
+import {
+  ShieldAlert,
+  ShieldCheck,
+  Tag,
+  Users,
+  Plus,
+  Edit2,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  Mail,
+  Search,
+  Filter,
+  Save,
+  X,
+  Lock,
+  Clock,
+  Palette,
+  Eye,
+  Check,
+  Send,
+  Zap,
+  Droplets,
+  TreePine,
+  HeartHandshake,
+  FileCheck,
+  Trophy,
+  Hammer,
+  Shield,
+  HelpCircle,
+} from 'lucide-react';
+import { Category, User, UserRole, EmailNotificationLog } from '../../types';
+import { CategoryIcon } from '../common/CategoryIcon';
+import { ticketService } from '../../services/ticketService';
+import { emailService, getStoredEmailLogs } from '../../services/emailService';
+
+interface AdminMaintenanceViewProps {
+  currentUser: User | null;
+  categories: Category[];
+  onCategoriesUpdated: (newCategories: Category[]) => void;
+}
+
+const AVAILABLE_ICONS = [
+  { id: 'Zap', label: 'Rayo / Electricidad' },
+  { id: 'Droplets', label: 'Gotas / Agua' },
+  { id: 'TreePine', label: 'Árbol / Poda' },
+  { id: 'HeartHandshake', label: 'Manos / Social' },
+  { id: 'FileCheck', label: 'Documento / Permiso' },
+  { id: 'Trophy', label: 'Trofeo / Deportes' },
+  { id: 'Hammer', label: 'Martillo / Obras' },
+  { id: 'Shield', label: 'Escudo / Seguridad' },
+];
+
+export const AdminMaintenanceView: React.FC<AdminMaintenanceViewProps> = ({
+  currentUser,
+  categories,
+  onCategoriesUpdated,
+}) => {
+  const isSuperiorAdmin = currentUser?.rol === 'administrador';
+
+  const [activeTab, setActiveTab] = useState<'categories' | 'roles' | 'emails'>('categories');
+
+  // Categories State
+  const [categoryList, setCategoryList] = useState<Category[]>(categories);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categorySuccessMsg, setCategorySuccessMsg] = useState<string | null>(null);
+
+  // Users & Roles State
+  const [userList, setUserList] = useState<User[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<string>('todos');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userSuccessMsg, setUserSuccessMsg] = useState<string | null>(null);
+
+  // Email Logs State
+  const [emailLogs, setEmailLogs] = useState<EmailNotificationLog[]>([]);
+  const [selectedEmailPreview, setSelectedEmailPreview] = useState<EmailNotificationLog | null>(null);
+
+  // Load initial data
+  useEffect(() => {
+    setCategoryList(categories);
+    loadUsers();
+    loadEmailLogs();
+  }, [categories]);
+
+  const loadUsers = async () => {
+    const users = await ticketService.getAllUsers();
+    setUserList(users);
+  };
+
+  const loadEmailLogs = () => {
+    setEmailLogs(getStoredEmailLogs());
+  };
+
+  // 1. RBAC Security Barrier: Superior Admin Only
+  if (!isSuperiorAdmin) {
+    return (
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center max-w-2xl mx-auto my-12 shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center mb-4">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+          Acceso Restringido: Solo Administrador Superior
+        </h2>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+          Esta sección contiene el mantenimiento centralizado de categorías de reporte y la asignación
+          de roles del personal de la Junta Comunal. Solo los usuarios con rol de{' '}
+          <strong className="text-slate-900 dark:text-slate-200">Administrador Superior</strong>{' '}
+          tienen autorización para modificar estas configuraciones maestras.
+        </p>
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300">
+          <Lock className="w-4 h-4 text-slate-500" />
+          <span>Su rol actual es: {currentUser?.rol?.toUpperCase() || 'USUARIO'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle Category Save (Create / Update)
+  const handleSaveCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory || !editingCategory.nombre.trim()) return;
+
+    let updated: Category[];
+    const exists = categoryList.some((c) => c.id === editingCategory.id);
+
+    if (exists) {
+      updated = categoryList.map((c) => (c.id === editingCategory.id ? editingCategory : c));
+      setCategorySuccessMsg(`Categoría "${editingCategory.nombre}" actualizada correctamente.`);
+    } else {
+      updated = [...categoryList, editingCategory];
+      setCategorySuccessMsg(`Categoría "${editingCategory.nombre}" creada satisfactoriamente.`);
+    }
+
+    setCategoryList(updated);
+    onCategoriesUpdated(updated);
+    setIsCategoryModalOpen(false);
+    setEditingCategory(null);
+    setTimeout(() => setCategorySuccessMsg(null), 3000);
+  };
+
+  const handleOpenNewCategory = () => {
+    const newId = `cat-${Date.now()}`;
+    setEditingCategory({
+      id: newId,
+      nombre: '',
+      prefijo: 'INC',
+      descripcion: '',
+      color: '#0284C7',
+      icono: 'Tag',
+      slaHoras: 48,
+      activa: true,
+    });
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleDeleteCategory = (id: string, name: string) => {
+    if (window.confirm(`¿Está seguro de eliminar la categoría "${name}"?`)) {
+      const updated = categoryList.filter((c) => c.id !== id);
+      setCategoryList(updated);
+      onCategoriesUpdated(updated);
+      setCategorySuccessMsg(`Categoría "${name}" eliminada.`);
+      setTimeout(() => setCategorySuccessMsg(null), 3000);
+    }
+  };
+
+  // Handle User Role Change
+  const handleQuickRoleChange = async (userId: string, newRole: UserRole) => {
+    const updatedUser = await ticketService.updateUserRole(userId, newRole);
+    if (updatedUser) {
+      setUserList((prev) => prev.map((u) => (u.id === userId ? { ...u, rol: newRole } : u)));
+      setUserSuccessMsg(`Rol del usuario actualizado a "${newRole.toUpperCase()}".`);
+      setTimeout(() => setUserSuccessMsg(null), 3000);
+    }
+  };
+
+  // Filtered Users
+  const filteredUsers = userList.filter((u) => {
+    const matchesSearch =
+      u.nombre.toLowerCase().includes(userSearch.toLowerCase()) ||
+      u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+      (u.cedula && u.cedula.toLowerCase().includes(userSearch.toLowerCase())) ||
+      (u.sector && u.sector.toLowerCase().includes(userSearch.toLowerCase()));
+
+    const matchesRole = userRoleFilter === 'todos' || u.rol === userRoleFilter;
+
+    return matchesSearch && matchesRole;
+  });
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 text-xs font-bold uppercase tracking-wider">
+              Administración Superior
+            </span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-1">
+            Mantenimiento de Categorías & Asignación de Roles
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Control maestro de tipos de reporte, prefijos de tickets, roles de usuarios y notificaciones
+          </p>
+        </div>
+
+        {/* Tab Buttons */}
+        <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={() => setActiveTab('categories')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              activeTab === 'categories'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Tag className="w-3.5 h-3.5" />
+            <span>Categorías ({categoryList.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('roles')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              activeTab === 'roles'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Usuarios & Roles ({userList.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('emails');
+              loadEmailLogs();
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+              activeTab === 'emails'
+                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Alertas de Correo</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Notifications */}
+      {categorySuccessMsg && (
+        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{categorySuccessMsg}</span>
+        </div>
+      )}
+
+      {userSuccessMsg && (
+        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{userSuccessMsg}</span>
+        </div>
+      )}
+
+      {/* TAB 1: CATEGORIES MAINTENANCE */}
+      {activeTab === 'categories' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              Catálogo de Tipos de Incidencia & Prefijos
+            </h2>
+            <button
+              type="button"
+              onClick={handleOpenNewCategory}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nueva Categoría</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {categoryList.map((cat) => (
+              <div
+                key={cat.id}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs hover:border-blue-300 dark:hover:border-blue-800 transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-xs"
+                        style={{ backgroundColor: cat.color }}
+                      >
+                        <CategoryIcon iconName={cat.icono} className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                          {cat.nombre}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                            Prefijo: {cat.prefijo || 'ALU'}
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> SLA: {cat.slaHoras}h
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCategory({ ...cat });
+                          setIsCategoryModalOpen(true);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer"
+                        title="Editar categoría"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(cat.id, cat.nombre)}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 cursor-pointer"
+                        title="Eliminar categoría"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 mb-4 leading-relaxed">
+                    {cat.descripcion}
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>Ejemplo: <strong>{cat.prefijo || 'ALU'}-2025-001</strong></span>
+                  <span className={`px-2 py-0.5 rounded-full font-medium ${
+                    cat.activa !== false
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}>
+                    {cat.activa !== false ? 'Activa' : 'Inactiva'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: USER ROLES MANAGEMENT */}
+      {activeTab === 'roles' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+            {/* Search */}
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Buscar por nombre, cédula o sector..."
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/30"
+              />
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            </div>
+
+            {/* Role Filter */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+              <select
+                value={userRoleFilter}
+                onChange={(e) => setUserRoleFilter(e.target.value)}
+                className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+              >
+                <option value="todos">Todos los Roles</option>
+                <option value="administrador">Administrador</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="agente">Agente / Cuadrilla</option>
+                <option value="usuario">Ciudadano / Residente</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Users Table */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                  <tr>
+                    <th className="py-3 px-4">Usuario / Cédula</th>
+                    <th className="py-3 px-4">Contacto & Sector</th>
+                    <th className="py-3 px-4">Rol Asignado</th>
+                    <th className="py-3 px-4">Estado</th>
+                    <th className="py-3 px-4 text-right">Asignar Rol</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredUsers.map((u) => (
+                    <tr key={u.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <img
+                            src={u.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                            alt={u.nombre}
+                            className="w-8 h-8 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                          />
+                          <div>
+                            <p className="font-bold text-slate-900 dark:text-slate-100">{u.nombre}</p>
+                            <p className="text-[11px] text-slate-500 font-mono">Cédula: {u.cedula || 'N/A'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <p className="text-slate-800 dark:text-slate-200">{u.email}</p>
+                        <p className="text-[11px] text-slate-500">{u.sector || 'Sector no asignado'}</p>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${
+                            u.rol === 'administrador'
+                              ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                              : u.rol === 'supervisor'
+                              ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                              : u.rol === 'agente'
+                              ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          {u.rol === 'administrador' && '👑 '}
+                          {u.rol === 'supervisor' && '📋 '}
+                          {u.rol === 'agente' && '🔧 '}
+                          {u.rol === 'usuario' && '👤 '}
+                          {u.rol.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          {u.estado || 'Activo'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <select
+                          value={u.rol}
+                          onChange={(e) => handleQuickRoleChange(u.id, e.target.value as UserRole)}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 cursor-pointer focus:ring-2 focus:ring-blue-500/30"
+                        >
+                          <option value="usuario">👤 Ciudadano (Usuario)</option>
+                          <option value="agente">🔧 Agente (Cuadrilla)</option>
+                          <option value="supervisor">📋 Supervisor Comunal</option>
+                          <option value="administrador">👑 Administrador Superior</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: EMAIL NOTIFICATION ALERTS */}
+      {activeTab === 'emails' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Bitácora de Notificaciones & Alertas por Correo
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Historial de confirmaciones de radicación y avances automáticos despachados a ciudadanos
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadEmailLogs}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            >
+              Actualizar Bitácora
+            </button>
+          </div>
+
+          {emailLogs.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
+              <Mail className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+              <p className="text-xs">No hay alertas de correo registradas todavía en esta sesión.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {emailLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 shrink-0">
+                      <Mail className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-slate-900 dark:text-slate-100">{log.asunto}</span>
+                        {log.ticketId && (
+                          <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/60 font-mono text-[10px] font-bold text-blue-700 dark:text-blue-300">
+                            {log.ticketId}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Para: <strong className="text-slate-700 dark:text-slate-300">{log.destinatario}</strong> • {log.fechaHora}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Despachado
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmailPreview(log)}
+                      className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium cursor-pointer"
+                    >
+                      Ver Plantilla
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MODAL: CATEGORY EDIT / CREATE */}
+      {isCategoryModalOpen && editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {categoryList.some((c) => c.id === editingCategory.id) ? 'Editar Categoría' : 'Nueva Categoría'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategory} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Nombre de la Categoría *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingCategory.nombre}
+                  onChange={(e) => setEditingCategory({ ...editingCategory, nombre: e.target.value })}
+                  placeholder="Ej: Obras Comunitarias / Bacheo"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Código Prefijo (3-4 letras) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    value={editingCategory.prefijo || ''}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, prefijo: e.target.value.toUpperCase() })}
+                    placeholder="Ej: OBR, ALU, AGU"
+                    className="w-full px-3 py-2 text-xs font-mono font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 focus:ring-2 focus:ring-blue-500/30"
+                  />
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1">
+                    Generará tickets como <strong>{editingCategory.prefijo || 'OBR'}-2025-001</strong>
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    SLA en Horas *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="360"
+                    required
+                    value={editingCategory.slaHoras}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, slaHoras: parseInt(e.target.value) || 24 })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/30"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Color Distintivo
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={editingCategory.color}
+                      onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
+                      className="w-8 h-8 rounded-lg cursor-pointer border-0"
+                    />
+                    <input
+                      type="text"
+                      value={editingCategory.color}
+                      onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
+                      className="w-full px-2 py-1 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Icono Representativo
+                  </label>
+                  <select
+                    value={editingCategory.icono}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, icono: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  >
+                    {AVAILABLE_ICONS.map((ico) => (
+                      <option key={ico.id} value={ico.id}>
+                        {ico.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Descripción del Servicio
+                </label>
+                <textarea
+                  rows={3}
+                  value={editingCategory.descripcion}
+                  onChange={(e) => setEditingCategory({ ...editingCategory, descripcion: e.target.value })}
+                  placeholder="Detalle los casos que atiende este tipo de reporte..."
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Guardar Categoría</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EMAIL HTML PREVIEW */}
+      {selectedEmailPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Vista Previa del Correo Despachado
+                </h3>
+                <p className="text-xs text-slate-500">Destinatario: {selectedEmailPreview.destinatario}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedEmailPreview(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 max-h-[70vh] overflow-y-auto bg-slate-100 dark:bg-slate-950">
+              <div
+                className="bg-white rounded-xl shadow-xs overflow-hidden"
+                dangerouslySetInnerHTML={{ __html: selectedEmailPreview.cuerpoHtml }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

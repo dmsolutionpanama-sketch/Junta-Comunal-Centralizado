@@ -492,9 +492,70 @@ export const ticketService = {
     return ticket;
   },
 
+  // User & RBAC Management
+  async getAllUsers(): Promise<User[]> {
+    try {
+      const raw = localStorage.getItem('ticketing_system_users_v1');
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch {
+      // Fallback
+    }
+    const { MOCK_SYSTEM_USERS } = await import('../data/mockData');
+    return MOCK_SYSTEM_USERS;
+  },
+
+  async updateUserRole(userId: string, newRole: UserRole): Promise<{ success: boolean; user?: User; message?: string }> {
+    try {
+      const users = await this.getAllUsers();
+      const idx = users.findIndex((u) => u.id === userId);
+      if (idx !== -1) {
+        users[idx].rol = newRole;
+        localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+        return { success: true, user: users[idx], message: 'Rol de usuario actualizado correctamente.' };
+      }
+      return { success: false, message: 'Usuario no encontrado.' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error al actualizar rol.' };
+    }
+  },
+
+  async registerUser(input: any): Promise<{ success: boolean; user?: User; token?: string; message?: string }> {
+    try {
+      const users = await this.getAllUsers();
+      const existing = users.find((u) => u.email.toLowerCase() === input.email.toLowerCase());
+      if (existing) {
+        return { success: false, message: 'El correo electrónico ya se encuentra registrado.' };
+      }
+
+      const newUser: User = {
+        id: `usr-${Date.now()}`,
+        nombre: input.nombre,
+        email: input.email,
+        cedula: input.cedula,
+        telefono: input.telefono,
+        sector: input.sector,
+        genero: input.genero,
+        edad: input.edad,
+        rol: 'ciudadano',
+        estado: 'activo',
+        fechaRegistro: new Date().toISOString().split('T')[0],
+      };
+
+      users.push(newUser);
+      localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+      const token = `jwt-token-${Date.now()}`;
+      return { success: true, user: newUser, token, message: 'Ciudadano registrado con éxito en la Junta Comunal.' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error al registrar usuario.' };
+    }
+  },
+
   // Reset to original mock data
   resetMockData(): Ticket[] {
     saveStoredTickets(MOCK_TICKETS);
     return MOCK_TICKETS;
   },
 };
+

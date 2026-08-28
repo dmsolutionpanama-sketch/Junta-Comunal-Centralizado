@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Ticket, TicketStatus, CreateTicketInput, TraceEventType } from './types';
+import { User, Ticket, TicketStatus, CreateTicketInput, TraceEventType, Category } from './types';
 import { ticketService } from './services/ticketService';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { CitizenIndexView } from './components/public/CitizenIndexView';
@@ -13,7 +13,10 @@ import { QuickSearchView } from './components/search/QuickSearchView';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { ReportsView } from './components/reports/ReportsView';
 import { ConfigView } from './components/config/ConfigView';
+import { AdminMaintenanceView } from './components/admin/AdminMaintenanceView';
 import { NewTicketModal } from './components/tickets/NewTicketModal';
+import { CATEGORIAS_SISTEMA } from './config/categories';
+import { analytics } from './services/analytics';
 
 type AppScreen = 'citizen-index' | 'login' | 'staff-portal';
 
@@ -39,6 +42,7 @@ const MainAppContent: React.FC = () => {
       nombre: 'Ing. Carlos Mendoza',
       email: 'carlos.mendoza@alcaldia.gob.pa',
       rol: 'administrador',
+      departamento: 'Despacho de Administración Superior',
       avatarUrl:
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     };
@@ -52,6 +56,7 @@ const MainAppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<MainNavView>('vista-general');
   const [selectedCategoryDashboard, setSelectedCategoryDashboard] = useState<string | null>(null);
   const [activeTraceTicketId, setActiveTraceTicketId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>(CATEGORIAS_SISTEMA);
 
   // Tickets State
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -76,7 +81,8 @@ const MainAppContent: React.FC = () => {
     };
 
     loadInitialTickets();
-  }, []);
+    analytics.trackPageView(activeScreen);
+  }, [activeScreen]);
 
   // Handle Login Success
   const handleLoginSuccess = (user: User, userToken: string) => {
@@ -85,10 +91,12 @@ const MainAppContent: React.FC = () => {
     localStorage.setItem('ticketing_user', JSON.stringify(user));
     localStorage.setItem('ticketing_token', userToken);
     setActiveScreen('staff-portal');
+    analytics.trackAuthEvent('login_success', user.rol);
   };
 
   // Handle Logout
   const handleLogout = () => {
+    analytics.trackAuthEvent('logout', currentUser?.rol);
     setCurrentUser(null);
     setToken(null);
     ticketService.logout();
@@ -100,6 +108,7 @@ const MainAppContent: React.FC = () => {
   // Navigation Handler inside Staff Portal
   const handleNavigate = (view: MainNavView, categoryId?: string | null) => {
     setCurrentView(view);
+    analytics.trackPageView(`staff-portal/${view}`);
     if (view === 'dashboard') {
       setSelectedCategoryDashboard(categoryId || null);
     } else {
@@ -125,6 +134,7 @@ const MainAppContent: React.FC = () => {
       const res = await ticketService.createTicket(ticketInput);
       if (res.success && res.data) {
         setTickets((prev) => [res.data!, ...prev]);
+        analytics.trackTicketCreated(res.data.id, res.data.categoriaId, res.data.prioridad);
         return true;
       }
       return false;
@@ -139,11 +149,12 @@ const MainAppContent: React.FC = () => {
       const updated = await ticketService.updateTicketStatus(
         ticketId,
         newStatus,
-        currentUser?.nombre || 'Administrador',
-        currentUser?.rol || 'Supervisor'
+        currentUser?.nombre || 'Personal Junta Comunal',
+        currentUser?.rol || 'agente'
       );
       if (updated) {
         setTickets((prev) => prev.map((t) => (t.id === ticketId ? updated : t)));
+        analytics.trackStatusUpdated(ticketId, newStatus, currentUser?.nombre || 'Junta Comunal');
       }
     } catch (err) {
       console.error('Error updating status:', err);
@@ -173,6 +184,10 @@ const MainAppContent: React.FC = () => {
   const handleResetMockData = () => {
     const reset = ticketService.resetMockData();
     setTickets([...reset]);
+  };
+
+  const handleCategoriesUpdated = (newCategories: Category[]) => {
+    setCategories(newCategories);
   };
 
   // 1. CITIZEN PUBLIC VIEW (INDEX VIEW)
@@ -205,13 +220,16 @@ const MainAppContent: React.FC = () => {
 
   // 3. STAFF / ADMINISTRATIVE PORTAL (JUNTA COMUNAL)
   return (
-    <div className={`min-h-screen flex transition-colors duration-200 ${
-      isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
-    }`}>
+    <div
+      className={`min-h-screen flex transition-colors duration-200 ${
+        isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
+      }`}
+    >
       {/* Left Sidebar Navigation */}
       <Sidebar
         currentView={currentView}
         selectedCategoryDashboard={selectedCategoryDashboard}
+        currentUser={currentUser}
         onNavigate={handleNavigate}
         openNewTicketModal={() => setIsNewTicketModalOpen(true)}
         onOpenCitizenPortal={() => setActiveScreen('citizen-index')}
@@ -248,7 +266,7 @@ const MainAppContent: React.FC = () => {
                   onAddTraceNote={(tId, note, eventType, newStatus) => {
                     handleAddTraceEvent(tId, {
                       tipoEvento: eventType || 'comentario',
-                      responsable: currentUser?.nombre || 'Administrador',
+                      responsable: currentUser?.nombre || 'Personal Junta Comunal',
                       rolResponsable: currentUser?.rol || 'Supervisor',
                       nota: note,
                       estadoNuevo: newStatus,
@@ -263,6 +281,7 @@ const MainAppContent: React.FC = () => {
                 <TraceabilityView
                   tickets={tickets}
                   initialTicketId={activeTraceTicketId}
+                  currentUser={currentUser}
                   onAddTraceEvent={handleAddTraceEvent}
                 />
               )}
@@ -277,12 +296,21 @@ const MainAppContent: React.FC = () => {
                 <ReportsView tickets={tickets} />
               )}
 
-              {/* 5. Configuración & Base de Datos */}
+              {/* 5. Mantenimiento de Categorías & Roles (Superior Admin Only) */}
+              {currentView === 'mantenimiento-admin' && (
+                <AdminMaintenanceView
+                  currentUser={currentUser}
+                  categories={categories}
+                  onCategoriesUpdated={handleCategoriesUpdated}
+                />
+              )}
+
+              {/* 6. Configuración & Base de Datos */}
               {currentView === 'configuracion' && (
                 <ConfigView onResetMockData={handleResetMockData} />
               )}
 
-              {/* 6. Dashboard (ALWAYS LAST OPTION in Sidebar hierarchy) */}
+              {/* 7. Dashboard (ALWAYS LAST OPTION in Sidebar hierarchy) */}
               {currentView === 'dashboard' && (
                 <DashboardView
                   tickets={tickets}
@@ -326,4 +354,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

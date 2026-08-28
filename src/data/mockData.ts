@@ -5,16 +5,119 @@
  */
 
 import { Ticket, User } from '../types';
+import { getCategoryPrefix } from '../utils/ticketCodeGenerator';
 
 export const MOCK_CURRENT_USER: User = {
   id: 'usr-admin-01',
   nombre: 'Ing. Carlos Mendoza',
-  email: 'carlos.mendoza@alcaldia.gob.pa',
+  email: 'carlos.mendoza@juntacomunal.gob.pa',
   rol: 'administrador',
+  cedula: '8-340-1289',
+  telefono: '+507 6712-4490',
+  sector: 'Altos de Las Cumbres',
+  genero: 'masculino',
+  edad: 46,
+  estado: 'activo',
+  departamento: 'Administración General de la Junta',
+  fechaRegistro: '2024-01-15',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
 };
 
-export const MOCK_TICKETS: Ticket[] = [
+export const MOCK_SYSTEM_USERS: User[] = [
+  MOCK_CURRENT_USER,
+  {
+    id: 'usr-agent-01',
+    nombre: 'Téc. Javier Castillo',
+    email: 'javier.castillo@juntacomunal.gob.pa',
+    rol: 'agente',
+    cedula: '8-802-4412',
+    telefono: '+507 6590-3321',
+    sector: 'Nueva Libia',
+    genero: 'masculino',
+    edad: 34,
+    estado: 'activo',
+    departamento: 'Cuadrilla de Obras & Alumbrado',
+    fechaRegistro: '2024-02-10',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'usr-sup-01',
+    nombre: 'Lic. Roberto Díaz',
+    email: 'roberto.diaz@juntacomunal.gob.pa',
+    rol: 'supervisor',
+    cedula: '8-710-9982',
+    telefono: '+507 6418-2009',
+    sector: 'Villa Zaita',
+    genero: 'masculino',
+    edad: 41,
+    estado: 'activo',
+    departamento: 'Coordinación Comunitaria y Fiscalización',
+    fechaRegistro: '2024-03-01',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'usr-agent-02',
+    nombre: 'Lic. Sandra Moreno',
+    email: 'sandra.moreno@juntacomunal.gob.pa',
+    rol: 'agente',
+    cedula: '8-904-1182',
+    telefono: '+507 6902-1455',
+    sector: 'Gonzalillo',
+    genero: 'femenino',
+    edad: 29,
+    estado: 'activo',
+    departamento: 'Trabajo Social y Asistencia Comunitaria',
+    fechaRegistro: '2024-04-12',
+    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'usr-user-01',
+    nombre: 'María Elena Valdés',
+    email: 'm.valdes@gmail.com',
+    rol: 'usuario',
+    cedula: '8-742-1983',
+    telefono: '+507 6821-4490',
+    sector: 'Altos de Las Cumbres',
+    genero: 'femenino',
+    edad: 38,
+    estado: 'activo',
+    departamento: 'Residente Comunal',
+    fechaRegistro: '2025-05-10',
+    avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'usr-user-02',
+    nombre: 'Juan Carlos Batista',
+    email: 'jc.batista@outlook.com',
+    rol: 'usuario',
+    cedula: '8-612-3341',
+    telefono: '+507 6390-1122',
+    sector: 'Gonzalillo',
+    genero: 'masculino',
+    edad: 52,
+    estado: 'activo',
+    departamento: 'Residente Comunal',
+    fechaRegistro: '2025-05-11',
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'usr-user-03',
+    nombre: 'Ana Lucía Gordon',
+    email: 'ana.gordon@yahoo.com',
+    rol: 'usuario',
+    cedula: '8-890-2134',
+    telefono: '+507 6788-9002',
+    sector: 'Villa Zaita',
+    genero: 'femenino',
+    edad: 26,
+    estado: 'activo',
+    departamento: 'Residente Comunal',
+    fechaRegistro: '2025-05-12',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  },
+];
+
+const RAW_MOCK_TICKETS: Ticket[] = [
   {
     id: 'TK-2025-001',
     numeroRegistro: 'TK-2025-001',
@@ -1235,3 +1338,16 @@ export const MOCK_TICKETS: Ticket[] = [
     ],
   },
 ];
+
+export const MOCK_TICKETS: Ticket[] = RAW_MOCK_TICKETS.map((t, idx) => {
+  const prefix = getCategoryPrefix(t.categoriaNombre, t.categoriaId);
+  const code = `${prefix}-2025-${String(idx + 1).padStart(3, '0')}`;
+  return {
+    ...t,
+    id: code,
+    numeroRegistro: code,
+    adjuntos: (t.adjuntos || []).map((a) => ({ ...a, ticketId: code })),
+    trazabilidad: (t.trazabilidad || []).map((tr) => ({ ...tr, ticketId: code })),
+  };
+});
+

@@ -18,6 +18,7 @@ import {
   optionalAuth,
   AuthenticatedRequest,
 } from './src/server/auth';
+import { getDbPool, getDbStatus, queryTicketsFromMySQL } from './src/server/db';
 
 // Centralized master data loaded from catalogs.json
 let systemCategories = [...catalogsData.categorias];
@@ -65,7 +66,8 @@ async function startServer() {
   // ==========================================
 
   // Health check
-  app.get('/api/health', (req: Request, res: Response) => {
+  app.get('/api/health', async (req: Request, res: Response) => {
+    const dbStatus = getDbStatus();
     res.json({
       status: 'ok',
       service: 'Sistema de Gestión de Tickets API',
@@ -73,7 +75,20 @@ async function startServer() {
       ticketsCount: ticketsDb.length,
       categoriesCount: systemCategories.length,
       sectorsCount: systemSectors.length,
-      database: 'MySQL Ready (Centralized Catalog & In-Memory Store)',
+      database: dbStatus,
+    });
+  });
+
+  // DB Connection Status & Diagnostics
+  app.get('/api/database/status', async (req: Request, res: Response) => {
+    const pool = await getDbPool();
+    const status = getDbStatus();
+    res.json({
+      success: true,
+      data: {
+        ...status,
+        poolActive: pool !== null,
+      },
     });
   });
 
@@ -516,9 +531,18 @@ async function startServer() {
   });
 
   // Tickets: List with Filters, Pagination, and RBAC Sensitive Field Masking
-  app.get('/api/tickets', optionalAuth, (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/tickets', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+
+      // Attempt to load live records from MySQL if connected
+      const liveMysqlTickets = await queryTicketsFromMySQL();
+      if (liveMysqlTickets && liveMysqlTickets.length > 0) {
+        // Merge with existing local/WhatsApp tickets without duplicates
+        const existingIds = new Set(liveMysqlTickets.map((t) => t.id));
+        const nonDuplicateInMemory = ticketsDb.filter((t) => !existingIds.has(t.id));
+        ticketsDb = [...liveMysqlTickets, ...nonDuplicateInMemory];
+      }
 
       const {
         categoria,

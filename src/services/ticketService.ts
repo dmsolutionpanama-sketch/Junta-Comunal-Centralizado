@@ -495,13 +495,25 @@ export const ticketService = {
   // User & RBAC Management
   async getAllUsers(): Promise<User[]> {
     try {
-      const raw = localStorage.getItem('ticketing_system_users_v1');
-      if (raw) {
-        return JSON.parse(raw);
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          localStorage.setItem('ticketing_system_users_v1', JSON.stringify(json.data));
+          return json.data;
+        }
       }
     } catch {
       // Fallback
     }
+
+    try {
+      const raw = localStorage.getItem('ticketing_system_users_v1');
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch {}
+
     const { MOCK_SYSTEM_USERS } = await import('../data/mockData');
     try {
       localStorage.setItem('ticketing_system_users_v1', JSON.stringify(MOCK_SYSTEM_USERS));
@@ -510,21 +522,34 @@ export const ticketService = {
   },
 
   async updateUserRole(userId: string, newRole: UserRole): Promise<{ success: boolean; user?: User; message?: string }> {
-    try {
-      const users = await this.getAllUsers();
-      const idx = users.findIndex((u) => u.id === userId);
-      if (idx !== -1) {
-        users[idx].rol = newRole;
-        localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
-        return { success: true, user: users[idx], message: 'Rol de usuario actualizado correctamente.' };
-      }
-      return { success: false, message: 'Usuario no encontrado.' };
-    } catch (err: any) {
-      return { success: false, message: err.message || 'Error al actualizar rol.' };
-    }
+    return this.updateUserFull(userId, { rol: newRole });
   },
 
   async updateUserFull(userId: string, updatedData: Partial<User>): Promise<{ success: boolean; user?: User; message?: string }> {
+    try {
+      // Call backend API
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedData),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const users = await this.getAllUsers();
+          const idx = users.findIndex((u) => u.id === userId);
+          if (idx !== -1) {
+            users[idx] = json.data;
+            localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+          }
+          return { success: true, user: json.data, message: json.message || 'Usuario actualizado en base de datos.' };
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
     try {
       const users = await this.getAllUsers();
       const idx = users.findIndex((u) => u.id === userId);
@@ -534,7 +559,7 @@ export const ticketService = {
           ...updatedData,
         };
         localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
-        return { success: true, user: users[idx], message: 'Datos de usuario actualizados correctamente.' };
+        return { success: true, user: users[idx], message: 'Datos y foto de usuario actualizados correctamente.' };
       }
       return { success: false, message: 'Usuario no encontrado.' };
     } catch (err: any) {
@@ -542,7 +567,27 @@ export const ticketService = {
     }
   },
 
-  async createUserAdmin(input: Partial<User> & { password?: string }): Promise<{ success: boolean; user?: User; message?: string }> {
+  async createUserAdmin(input: Partial<User> & { password?: string; confirmPassword?: string }): Promise<{ success: boolean; user?: User; message?: string }> {
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const users = await this.getAllUsers();
+          users.unshift(json.data);
+          localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+          return { success: true, user: json.data, message: json.message || 'Usuario registrado exitosamente.' };
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
     try {
       const users = await this.getAllUsers();
       if (input.email) {
@@ -553,8 +598,10 @@ export const ticketService = {
       }
 
       const now = new Date();
-      const fechaStr = now.toISOString().split('T')[0];
+      const fechaStr = '2026-08-28';
       const horaStr = now.toTimeString().split(' ')[0].substring(0, 5);
+
+      const defaultAvatar = input.avatarUrl || `https://images.unsplash.com/photo-${input.genero === 'masculino' ? '1507003211169-0a1dd7228f2d' : '1534528741775-53994a69daeb'}?w=150&auto=format&fit=crop&q=80`;
 
       const newUser: User = {
         id: input.id || `usr-${Date.now()}`,
@@ -573,19 +620,25 @@ export const ticketService = {
         notasAdmin: input.notasAdmin || '',
         fechaRegistro: fechaStr,
         horaRegistro: horaStr,
+        fechaHoraRegistro: `${fechaStr} ${horaStr}`,
         ultimoAcceso: `${fechaStr} ${horaStr}`,
-        avatarUrl: input.avatarUrl || `https://images.unsplash.com/photo-${input.genero === 'masculino' ? '1507003211169-0a1dd7228f2d' : '1534528741775-53994a69daeb'}?w=150&auto=format&fit=crop&q=80`,
+        avatarUrl: defaultAvatar,
+        password: input.password ? '••••••••' : undefined,
       };
 
       users.unshift(newUser);
       localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
-      return { success: true, user: newUser, message: `Usuario "${newUser.nombre}" registrado exitosamente desde cero.` };
+      return { success: true, user: newUser, message: `Usuario "${newUser.nombre}" registrado exitosamente con foto y fecha 28 de agosto de 2026.` };
     } catch (err: any) {
       return { success: false, message: err.message || 'Error al registrar usuario.' };
     }
   },
 
   async deleteUser(userId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+    } catch {}
+
     try {
       let users = await this.getAllUsers();
       const exists = users.some((u) => u.id === userId);
@@ -602,15 +655,49 @@ export const ticketService = {
 
   async registerUser(input: any): Promise<{ success: boolean; user?: User; token?: string; message?: string }> {
     try {
+      // Try backend registration API first
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.user) {
+          setAuthToken(json.token);
+          localStorage.setItem(STORAGE_KEY_AUTH, JSON.stringify(json.user));
+          const users = await this.getAllUsers();
+          users.unshift(json.user);
+          localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
+          return {
+            success: true,
+            user: json.user,
+            token: json.token,
+            message: json.message || 'Ciudadano registrado con éxito.',
+          };
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    try {
       const users = await this.getAllUsers();
       const existing = users.find((u) => u.email.toLowerCase() === input.email.toLowerCase());
       if (existing) {
         return { success: false, message: 'El correo electrónico ya se encuentra registrado.' };
       }
 
+      if (input.password && input.confirmPassword && input.password !== input.confirmPassword) {
+        return { success: false, message: 'Las contraseñas no coinciden.' };
+      }
+
       const now = new Date();
-      const fechaStr = now.toISOString().split('T')[0];
+      const fechaStr = '2026-08-28';
       const horaStr = now.toTimeString().split(' ')[0].substring(0, 5);
+
+      const avatarUrl = input.avatarUrl || `https://images.unsplash.com/photo-${input.genero === 'masculino' ? '1500648767791-00dcc994a43e' : '1534528741775-53994a69daeb'}?w=150&auto=format&fit=crop&q=80`;
 
       const newUser: User = {
         id: `usr-${Date.now()}`,
@@ -628,22 +715,154 @@ export const ticketService = {
         lugarRegistro: input.lugarRegistro || 'Portal Web Ciudadano',
         fechaRegistro: fechaStr,
         horaRegistro: horaStr,
+        fechaHoraRegistro: `${fechaStr} ${horaStr}`,
         ultimoAcceso: `${fechaStr} ${horaStr}`,
-        avatarUrl: `https://images.unsplash.com/photo-${input.genero === 'masculino' ? '1500648767791-00dcc994a43e' : '1534528741775-53994a69daeb'}?w=150&auto=format&fit=crop&q=80`,
+        avatarUrl,
+        password: input.password ? '••••••••' : undefined,
       };
 
       users.unshift(newUser);
       localStorage.setItem('ticketing_system_users_v1', JSON.stringify(users));
       const token = `jwt-token-${Date.now()}`;
-      return { success: true, user: newUser, token, message: 'Ciudadano registrado con éxito en la Junta Comunal.' };
+      setAuthToken(token);
+      localStorage.setItem(STORAGE_KEY_AUTH, JSON.stringify(newUser));
+
+      return {
+        success: true,
+        user: newUser,
+        token,
+        message: 'Ciudadano registrado con éxito en la base de datos municipal con fecha 28 de agosto del 2026.',
+      };
     } catch (err: any) {
       return { success: false, message: err.message || 'Error al registrar usuario.' };
+    }
+  },
+
+  // WhatsApp Ingestion and Simulator
+  async simulateWhatsAppCase(payload: {
+    nombre?: string;
+    telefono?: string;
+    mensaje: string;
+    sector?: string;
+  }): Promise<{ success: boolean; data?: Ticket; message?: string }> {
+    try {
+      const res = await fetch('/api/whatsapp/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const tickets = getStoredTickets();
+          tickets.unshift(json.data);
+          saveStoredTickets(tickets);
+          this.triggerUpdateEvent();
+          return { success: true, data: json.data, message: json.message };
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    const now = new Date();
+    const nextNum = getStoredTickets().length + 1;
+    const formattedNum = `TK-2026-${String(nextNum).padStart(3, '0')}`;
+    const fechaCreacion = '2026-08-28';
+    const horaCreacion = now.toTimeString().split(' ')[0];
+
+    const newTicket: Ticket = {
+      id: formattedNum,
+      numeroRegistro: formattedNum,
+      asunto: payload.mensaje.length > 55 ? `${payload.mensaje.substring(0, 52)}...` : payload.mensaje,
+      descripcion: `[Mensaje WhatsApp]: ${payload.mensaje}`,
+      categoriaId: 'alumbrado-electrico',
+      categoriaNombre: 'Alumbrado Eléctrico',
+      estado: 'abierto',
+      prioridad: 'urgente',
+      sectorId: payload.sector || 'Altos de Las Cumbres',
+      sectorNombre: payload.sector || 'Altos de Las Cumbres',
+      ubicacionLat: 9.0834,
+      ubicacionLng: -79.5312,
+      direccionDetallada: `Reporte WhatsApp - ${payload.sector || 'Altos de Las Cumbres'}`,
+      lugarRegistro: 'WhatsApp Comunitario',
+      canalIntake: 'WhatsApp Comunitario',
+      canalRadicacion: 'whatsapp_comunal',
+      fechaCreacion,
+      horaCreacion,
+      fechaActualizacion: `${fechaCreacion} ${horaCreacion}`,
+      reportante: {
+        nombre: payload.nombre || 'Vecino WhatsApp',
+        cedula: '8-WhatsApp',
+        telefono: payload.telefono || '+507 6821-4490',
+        email: 'contacto@whatsapp.comunal',
+        genero: 'femenino',
+        edad: 35,
+        sector: payload.sector || 'Altos de Las Cumbres',
+      },
+      adjuntos: [
+        {
+          id: `att-wpp-${Date.now()}`,
+          ticketId: formattedNum,
+          tipo: 'foto',
+          nombre: 'evidencia_whatsapp.jpg',
+          url: 'https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?w=1200&auto=format&fit=crop&q=80',
+          thumbnailUrl: 'https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?w=400&auto=format&fit=crop&q=80',
+          tamanoBytes: 2100000,
+          fechaSubida: `${fechaCreacion} ${horaCreacion}`,
+        },
+      ],
+      trazabilidad: [
+        {
+          id: `tr-wpp-${Date.now()}`,
+          ticketId: formattedNum,
+          tipoEvento: 'creacion',
+          fechaHora: `${fechaCreacion} ${horaCreacion}`,
+          responsable: 'Bot WhatsApp Comunal',
+          rolResponsable: 'Canal Automatizado WhatsApp',
+          nota: 'Incidencia recibida vía WhatsApp e ingresada en tiempo real.',
+          estadoNuevo: 'abierto',
+        },
+      ],
+    };
+
+    const tickets = getStoredTickets();
+    tickets.unshift(newTicket);
+    saveStoredTickets(tickets);
+    this.triggerUpdateEvent();
+
+    return {
+      success: true,
+      data: newTicket,
+      message: `Caso WhatsApp ${formattedNum} integrado en tiempo real al sistema.`,
+    };
+  },
+
+  // Event bus for live dashboard / ticket list sync
+  subscribers: [] as Array<() => void>,
+  subscribe(callback: () => void) {
+    this.subscribers.push(callback);
+    return () => {
+      this.subscribers = this.subscribers.filter((cb) => cb !== callback);
+    };
+  },
+  triggerUpdateEvent() {
+    this.subscribers.forEach((cb) => {
+      try {
+        cb();
+      } catch {}
+    });
+    // Also dispatch custom browser event
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ticket_db_updated'));
     }
   },
 
   // Reset to original mock data
   resetMockData(): Ticket[] {
     saveStoredTickets(MOCK_TICKETS);
+    this.triggerUpdateEvent();
     return MOCK_TICKETS;
   },
 };

@@ -15,6 +15,7 @@ import { ReportsView } from './components/reports/ReportsView';
 import { ConfigView } from './components/config/ConfigView';
 import { AdminMaintenanceView } from './components/admin/AdminMaintenanceView';
 import { NewTicketModal } from './components/tickets/NewTicketModal';
+import { UserProfileModal } from './components/auth/UserProfileModal';
 import { CATEGORIAS_SISTEMA } from './config/categories';
 import { analytics } from './services/analytics';
 
@@ -65,8 +66,9 @@ const MainAppContent: React.FC = () => {
   // UI Modals & Drawers
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
+  const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
 
-  // Load Tickets on Mount
+  // Load Tickets on Mount & Subscribe to Real-Time Updates (WhatsApp / DB Sync)
   useEffect(() => {
     const loadInitialTickets = async () => {
       setIsLoading(true);
@@ -82,6 +84,26 @@ const MainAppContent: React.FC = () => {
 
     loadInitialTickets();
     analytics.trackPageView(activeScreen);
+
+    // Subscribe to internal service event bus for instant updates (e.g., WhatsApp webhook / DB changes)
+    const unsubscribe = ticketService.subscribe(() => {
+      ticketService.getAllTickets().then((data) => {
+        setTickets(data);
+      });
+    });
+
+    // Also listen to window event 'ticket_db_updated'
+    const handleDbUpdated = () => {
+      ticketService.getAllTickets().then((data) => {
+        setTickets(data);
+      });
+    };
+    window.addEventListener('ticket_db_updated', handleDbUpdated);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('ticket_db_updated', handleDbUpdated);
+    };
   }, [activeScreen]);
 
   // Handle Login Success
@@ -245,6 +267,7 @@ const MainAppContent: React.FC = () => {
           onOpenNewTicket={() => setIsNewTicketModalOpen(true)}
           onToggleDrawer={() => setIsDrawerOpen(true)}
           onOpenCitizenPortal={() => setActiveScreen('citizen-index')}
+          onOpenProfileModal={() => setIsUserProfileModalOpen(true)}
           unreadNotificationsCount={tickets.filter((t) => t.estado === 'abierto').length}
         />
 
@@ -341,6 +364,19 @@ const MainAppContent: React.FC = () => {
         onClose={() => setIsNewTicketModalOpen(false)}
         onSubmitTicket={handleCreateTicket}
       />
+
+      {/* User Profile & Photo Update Modal */}
+      {currentUser && (
+        <UserProfileModal
+          isOpen={isUserProfileModalOpen}
+          onClose={() => setIsUserProfileModalOpen(false)}
+          currentUser={currentUser}
+          onUserUpdated={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            localStorage.setItem('ticketing_user', JSON.stringify(updatedUser));
+          }}
+        />
+      )}
     </div>
   );
 };

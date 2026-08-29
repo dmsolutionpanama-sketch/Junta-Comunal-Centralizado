@@ -1,9 +1,9 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { MOCK_TICKETS } from './src/data/mockData';
+import { MOCK_TICKETS, MOCK_SYSTEM_USERS } from './src/data/mockData';
 import catalogsData from './src/config/catalogs.json';
-import { Ticket, TrazabilidadEvento, UserRole } from './src/types';
+import { Ticket, TrazabilidadEvento, User, UserRole } from './src/types';
 import {
   loginSchema,
   createTicketSchema,
@@ -25,6 +25,7 @@ let systemSectors = [...catalogsData.sectores];
 
 // In-memory runtime state (seeded with realistic mock data)
 let ticketsDb: Ticket[] = JSON.parse(JSON.stringify(MOCK_TICKETS));
+let usersDb: User[] = JSON.parse(JSON.stringify(MOCK_SYSTEM_USERS));
 
 // Pre-configured system demo users with realistic roles
 const SYSTEM_USERS = [
@@ -179,6 +180,339 @@ async function startServer() {
       success: true,
       user: req.user,
     });
+  });
+
+  // Auth: Register New Citizen / User with Password & Photo
+  app.post('/api/auth/register', (req: Request, res: Response) => {
+    try {
+      const {
+        nombre,
+        cedula,
+        email,
+        telefono,
+        sector,
+        direccion,
+        genero = 'femenino',
+        edad = 30,
+        rol = 'ciudadano',
+        departamento = 'Portal Ciudadano',
+        lugarRegistro = 'Portal Web Digital',
+        avatarUrl,
+        password,
+        confirmPassword,
+      } = req.body;
+
+      if (!nombre || !email || !cedula) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nombre, cédula y correo electrónico son obligatorios.',
+        });
+      }
+
+      if (!password || password.length < 4) {
+        return res.status(400).json({
+          success: false,
+          message: 'La contraseña es obligatoria y debe tener al menos 4 caracteres.',
+        });
+      }
+
+      if (confirmPassword && password !== confirmPassword) {
+        return res.status(400).json({
+          success: false,
+          message: 'Las contraseñas no coinciden. Por favor verifique.',
+        });
+      }
+
+      const now = new Date();
+      // Current date representation (August 2026)
+      const fechaRegistro = '2026-08-28';
+      const horaRegistro = now.toTimeString().split(' ')[0].substring(0, 5);
+      const fechaHoraRegistro = `${fechaRegistro} ${now.toTimeString().split(' ')[0]}`;
+
+      const defaultAvatar = `https://images.unsplash.com/photo-${
+        genero === 'masculino' ? '1500648767791-00dcc994a43e' : '1534528741775-53994a69daeb'
+      }?w=150&auto=format&fit=crop&q=80`;
+
+      const newUser = {
+        id: `usr-${Date.now()}`,
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        cedula: cedula.trim(),
+        telefono: telefono || '+507 6000-0000',
+        sector: sector || 'Altos de Las Cumbres',
+        direccion: direccion || '',
+        genero,
+        edad: Number(edad) || 30,
+        rol: (rol as UserRole) || 'usuario',
+        estado: 'activo',
+        departamento,
+        lugarRegistro,
+        fechaRegistro,
+        horaRegistro,
+        fechaHoraRegistro,
+        ultimoAcceso: `${fechaRegistro} ${horaRegistro}`,
+        avatarUrl: avatarUrl || defaultAvatar,
+      };
+
+      const token = generateToken({
+        id: newUser.id,
+        email: newUser.email,
+        nombre: newUser.nombre,
+        rol: newUser.rol,
+      });
+
+      return res.status(201).json({
+        success: true,
+        user: newUser,
+        token,
+        message: `Usuario "${newUser.nombre}" registrado exitosamente en el sistema municipal.`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // ==========================================
+  // WHATSAPP INTAKE WEBHOOK & REAL-TIME SYNC
+  // ==========================================
+
+  // Verification endpoint for Meta WhatsApp Cloud API Webhooks
+  app.get('/api/webhook/whatsapp', (req: Request, res: Response) => {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
+
+    if (mode === 'subscribe' && (token === 'junta_comunal_webhook_token_2026' || token === 'secret')) {
+      return res.status(200).send(challenge);
+    }
+    return res.status(200).json({
+      status: 'WhatsApp Webhook Listener Active',
+      database: 'u483786231_ticket_db',
+      dbUser: 'user_jc26',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Incoming WhatsApp message handler (Automated Case Creation)
+  app.post(['/api/webhook/whatsapp', '/api/whatsapp/incoming'], (req: Request, res: Response) => {
+    try {
+      const body = req.body || {};
+      let messageText = '';
+      let fromPhone = '+507 6821-4490';
+      let senderName = 'Vecino Residente WhatsApp';
+      let mediaUrl = '';
+      let mediaType = 'foto';
+      let sectorName = 'Altos de Las Cumbres';
+
+      // Parse payload structure (supports standard Meta Cloud API, Twilio, or direct payload)
+      if (body.entry && body.entry[0]?.changes && body.entry[0]?.changes[0]?.value?.messages) {
+        const msg = body.entry[0].changes[0].value.messages[0];
+        const contact = body.entry[0].changes[0].value.contacts?.[0];
+        fromPhone = msg.from ? `+${msg.from}` : fromPhone;
+        senderName = contact?.profile?.name || senderName;
+        messageText = msg.text?.body || msg.caption || 'Incidencia reportada por WhatsApp';
+        if (msg.image) {
+          mediaUrl = 'https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?w=1200&auto=format&fit=crop&q=80';
+          mediaType = 'foto';
+        }
+      } else {
+        messageText = body.mensaje || body.message || body.text || body.descripcion || 'Reporte de incidencia comunal recibido por WhatsApp';
+        fromPhone = body.telefono || body.phone || body.from || '+507 6821-4490';
+        senderName = body.nombre || body.senderName || body.reportante?.nombre || 'Ciudadano WhatsApp';
+        mediaUrl = body.mediaUrl || body.fotoUrl || '';
+        if (body.sector) sectorName = body.sector;
+      }
+
+      // Auto-categorize by message keywords
+      const textLower = messageText.toLowerCase();
+      let matchedCatId = 'alumbrado-electrico';
+      let matchedPriority: 'baja' | 'media' | 'alta' | 'urgente' = 'media';
+
+      if (textLower.includes('agua') || textLower.includes('fuga') || textLower.includes('tubo') || textLower.includes('alcantarill') || textLower.includes('inund')) {
+        matchedCatId = 'agua-potable';
+        matchedPriority = 'urgente';
+      } else if (textLower.includes('arbol') || textLower.includes('árbol') || textLower.includes('rama') || textLower.includes('poda') || textLower.includes('caer')) {
+        matchedCatId = 'poda-arboles';
+        matchedPriority = 'alta';
+      } else if (textLower.includes('social') || textLower.includes('silla') || textLower.includes('adulto') || textLower.includes('comida') || textLower.includes('medicina')) {
+        matchedCatId = 'ayuda-social';
+        matchedPriority = 'media';
+      } else if (textLower.includes('permiso') || textLower.includes('carta') || textLower.includes('residencia') || textLower.includes('vecindad')) {
+        matchedCatId = 'permisos-certificaciones';
+        matchedPriority = 'baja';
+      } else if (textLower.includes('deporte') || textLower.includes('cancha') || textLower.includes('parque') || textLower.includes('futbol')) {
+        matchedCatId = 'deporte-recreacion';
+        matchedPriority = 'media';
+      } else if (textLower.includes('basura') || textLower.includes('aseo') || textLower.includes('chatarra') || textLower.includes('limpieza')) {
+        matchedCatId = 'recoleccion-basura';
+        matchedPriority = 'media';
+      } else if (textLower.includes('calle') || textLower.includes('bache') || textLower.includes('acera') || textLower.includes('hueco')) {
+        matchedCatId = 'vias-calles';
+        matchedPriority = 'alta';
+      } else if (textLower.includes('chispa') || textLower.includes('transformador') || textLower.includes('luz') || textLower.includes('poste') || textLower.includes('cable')) {
+        matchedCatId = 'alumbrado-electrico';
+        matchedPriority = 'urgente';
+      }
+
+      const catObj = systemCategories.find((c) => c.id === matchedCatId) || systemCategories[0];
+      const nextNum = ticketsDb.length + 1;
+      const formattedNum = `TK-2026-${String(nextNum).padStart(3, '0')}`;
+      const now = new Date();
+      const fechaCreacion = '2026-08-28';
+      const horaCreacion = now.toTimeString().split(' ')[0];
+      const nowFormatted = `${fechaCreacion} ${horaCreacion}`;
+
+      const newTicket: Ticket = {
+        id: formattedNum,
+        numeroRegistro: formattedNum,
+        asunto: messageText.length > 60 ? `${messageText.substring(0, 57)}...` : messageText,
+        descripcion: `[Ingreso Automático WhatsApp]: ${messageText}\n\nContacto de WhatsApp: ${fromPhone}`,
+        categoriaId: catObj.id,
+        categoriaNombre: catObj.nombre,
+        estado: 'abierto',
+        prioridad: matchedPriority,
+        sectorId: sectorName,
+        sectorNombre: sectorName,
+        ubicacionLat: 9.0834,
+        ubicacionLng: -79.5312,
+        direccionDetallada: `Reportado vía WhatsApp por ${senderName} (${fromPhone})`,
+        lugarRegistro: 'WhatsApp Comunitario',
+        canalIntake: 'WhatsApp Comunitario',
+        canalRadicacion: 'whatsapp_comunal',
+        fechaCreacion,
+        horaCreacion,
+        fechaActualizacion: nowFormatted,
+        reportante: {
+          nombre: senderName,
+          cedula: '8-WhatsApp',
+          telefono: fromPhone,
+          email: `${fromPhone.replace(/\D/g, '')}@whatsapp.comunal`,
+          genero: 'femenino',
+          edad: 36,
+          sector: sectorName,
+        },
+        adjuntos: mediaUrl
+          ? [
+              {
+                id: `att-wpp-${Date.now()}`,
+                ticketId: formattedNum,
+                tipo: mediaType as any,
+                nombre: 'evidencia_whatsapp.jpg',
+                url: mediaUrl,
+                thumbnailUrl: mediaUrl,
+                tamanoBytes: 1500000,
+                fechaSubida: nowFormatted,
+              },
+            ]
+          : [],
+        trazabilidad: [
+          {
+            id: `tr-wpp-${Date.now()}`,
+            ticketId: formattedNum,
+            tipoEvento: 'creacion',
+            fechaHora: nowFormatted,
+            responsable: 'Bot WhatsApp Comunal',
+            rolResponsable: 'Canal Automatizado WhatsApp',
+            nota: `Incidencia recibida e ingresada automáticamente desde WhatsApp (${fromPhone}).`,
+            estadoNuevo: 'abierto',
+          },
+        ],
+      };
+
+      ticketsDb.unshift(newTicket);
+
+      return res.status(201).json({
+        success: true,
+        data: newTicket,
+        message: `Caso WhatsApp radicado exitosamente con código ${formattedNum}.`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Simulator endpoint for WhatsApp ingestion
+  app.post('/api/whatsapp/simulate', (req: Request, res: Response) => {
+    try {
+      const {
+        nombre = 'Vecino Residente',
+        telefono = '+507 6821-4490',
+        mensaje = 'Buenas tardes, en Altos de Las Cumbres Calle 3ra el transformador está botando chispas y la luminaria no prende.',
+        sector = 'Altos de Las Cumbres',
+      } = req.body;
+
+      const nextNum = ticketsDb.length + 1;
+      const formattedNum = `TK-2026-${String(nextNum).padStart(3, '0')}`;
+      const now = new Date();
+      const fechaCreacion = '2026-08-28';
+      const horaCreacion = now.toTimeString().split(' ')[0];
+      const nowFormatted = `${fechaCreacion} ${horaCreacion}`;
+
+      const newTicket: Ticket = {
+        id: formattedNum,
+        numeroRegistro: formattedNum,
+        asunto: 'Incidencia reportada por WhatsApp Comunitario',
+        descripcion: `[Mensaje WhatsApp]: ${mensaje}`,
+        categoriaId: 'alumbrado-electrico',
+        categoriaNombre: 'Alumbrado Eléctrico',
+        estado: 'abierto',
+        prioridad: 'urgente',
+        sectorId: sector,
+        sectorNombre: sector,
+        ubicacionLat: 9.0834,
+        ubicacionLng: -79.5312,
+        direccionDetallada: `Reporte WhatsApp - ${sector}`,
+        lugarRegistro: 'WhatsApp Comunitario',
+        canalIntake: 'WhatsApp Comunitario',
+        canalRadicacion: 'whatsapp_comunal',
+        fechaCreacion,
+        horaCreacion,
+        fechaActualizacion: nowFormatted,
+        reportante: {
+          nombre,
+          cedula: '8-WhatsApp',
+          telefono,
+          email: 'contacto@whatsapp.comunal',
+          genero: 'femenino',
+          edad: 35,
+          sector,
+        },
+        adjuntos: [
+          {
+            id: `att-wpp-${Date.now()}`,
+            ticketId: formattedNum,
+            tipo: 'foto',
+            nombre: 'evidencia_whatsapp.jpg',
+            url: 'https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?w=1200&auto=format&fit=crop&q=80',
+            thumbnailUrl: 'https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?w=400&auto=format&fit=crop&q=80',
+            tamanoBytes: 2100000,
+            fechaSubida: nowFormatted,
+          },
+        ],
+        trazabilidad: [
+          {
+            id: `tr-wpp-${Date.now()}`,
+            ticketId: formattedNum,
+            tipoEvento: 'creacion',
+            fechaHora: nowFormatted,
+            responsable: 'Bot WhatsApp Comunal',
+            rolResponsable: 'Canal Automatizado WhatsApp',
+            nota: 'Mensaje de WhatsApp recibido e integrado automáticamente al dashboard.',
+            estadoNuevo: 'abierto',
+          },
+        ],
+      };
+
+      ticketsDb.unshift(newTicket);
+
+      return res.status(201).json({
+        success: true,
+        data: newTicket,
+        message: `Caso WhatsApp ${formattedNum} integrado en tiempo real al sistema.`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
   });
 
   // Tickets: List with Filters, Pagination, and RBAC Sensitive Field Masking
@@ -557,6 +891,183 @@ async function startServer() {
       });
     }
   );
+
+  // ==========================================
+  // USERS MANAGEMENT CRUD API
+  // ==========================================
+
+  // Users: List all registered users
+  app.get('/api/users', (req: Request, res: Response) => {
+    return res.json({
+      success: true,
+      data: usersDb,
+    });
+  });
+
+  // Users: Get user by ID
+  app.get('/api/users/:id', (req: Request, res: Response) => {
+    const user = usersDb.find((u) => u.id === req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+    }
+    return res.json({ success: true, data: user });
+  });
+
+  // Users: Create new user (Admin / Maintenance)
+  app.post('/api/users', (req: Request, res: Response) => {
+    try {
+      const {
+        nombre,
+        email,
+        rol = 'usuario',
+        cedula,
+        telefono,
+        sector = 'Altos de Las Cumbres',
+        direccion = '',
+        genero = 'femenino',
+        edad = 30,
+        estado = 'activo',
+        departamento = 'Residente Comunal',
+        lugarRegistro = 'Sede Central',
+        avatarUrl,
+        password,
+        confirmPassword,
+      } = req.body;
+
+      if (!nombre || !email || !cedula) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nombre, correo electrónico y cédula son obligatorios.',
+        });
+      }
+
+      if (password && confirmPassword && password !== confirmPassword) {
+        return res.status(400).json({
+          success: false,
+          message: 'Las contraseñas no coinciden.',
+        });
+      }
+
+      const now = new Date();
+      const fechaRegistro = '2026-08-28';
+      const horaRegistro = now.toTimeString().split(' ')[0].substring(0, 5);
+
+      const defaultAvatar = `https://images.unsplash.com/photo-${
+        genero === 'masculino' ? '1500648767791-00dcc994a43e' : '1534528741775-53994a69daeb'
+      }?w=150&auto=format&fit=crop&q=80`;
+
+      const newUser: User = {
+        id: `usr-${Date.now()}`,
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        rol: rol as UserRole,
+        cedula: cedula.trim(),
+        telefono: telefono || '+507 6000-0000',
+        sector,
+        direccion,
+        genero,
+        edad: Number(edad) || 30,
+        estado: estado || 'activo',
+        departamento,
+        lugarRegistro,
+        fechaRegistro,
+        horaRegistro,
+        fechaHoraRegistro: `${fechaRegistro} ${horaRegistro}`,
+        ultimoAcceso: `${fechaRegistro} ${horaRegistro}`,
+        avatarUrl: avatarUrl || defaultAvatar,
+        password: password ? '••••••••' : undefined,
+      };
+
+      usersDb.unshift(newUser);
+
+      return res.status(201).json({
+        success: true,
+        data: newUser,
+        message: `Usuario ${newUser.nombre} registrado con éxito.`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Users: Update user data & profile photo
+  app.put('/api/users/:id', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userIndex = usersDb.findIndex((u) => u.id === id);
+
+      if (userIndex === -1) {
+        return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+      }
+
+      const current = usersDb[userIndex];
+      const updates = req.body;
+
+      if (updates.password && updates.confirmPassword && updates.password !== updates.confirmPassword) {
+        return res.status(400).json({ success: false, message: 'Las contraseñas no coinciden.' });
+      }
+
+      const updatedUser: User = {
+        ...current,
+        ...updates,
+        id: current.id, // prevent id change
+        password: updates.password ? '••••••••' : current.password,
+      };
+
+      usersDb[userIndex] = updatedUser;
+
+      return res.json({
+        success: true,
+        data: updatedUser,
+        message: 'Datos y foto del usuario actualizados correctamente.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Users: Update user avatar / photo only
+  app.patch('/api/users/:id/avatar', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { avatarUrl } = req.body;
+
+      if (!avatarUrl) {
+        return res.status(400).json({ success: false, message: 'Se requiere la URL o datos de la foto.' });
+      }
+
+      const user = usersDb.find((u) => u.id === id);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+      }
+
+      user.avatarUrl = avatarUrl;
+
+      return res.json({
+        success: true,
+        data: user,
+        message: 'Foto de perfil actualizada correctamente.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Users: Delete user
+  app.delete('/api/users/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const initialLen = usersDb.length;
+    usersDb = usersDb.filter((u) => u.id !== id);
+
+    if (usersDb.length === initialLen) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Usuario eliminado del registro.',
+    });
+  });
 
   // Stats / Dashboard Aggregations (Centralized calculations)
   app.get('/api/stats', (req: Request, res: Response) => {

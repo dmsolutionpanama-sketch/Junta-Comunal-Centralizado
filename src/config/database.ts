@@ -19,8 +19,8 @@ export interface MySQLConfig {
 export const defaultMySQLConfig: MySQLConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT) || 3306,
-  database: process.env.DB_NAME || 'ticket_helpdesk_db',
-  user: process.env.DB_USER || 'root',
+  database: process.env.DB_NAME || 'u483786231_ticket_db',
+  user: process.env.DB_USER || 'user_jc26',
   password: process.env.DB_PASSWORD || '',
   connectionLimit: 10,
   ssl: process.env.DB_SSL === 'true',

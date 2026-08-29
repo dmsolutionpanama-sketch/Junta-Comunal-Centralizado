@@ -53,7 +53,7 @@ export interface TrazabilidadEvento {
 }
 
 export interface Ticket {
-  id: string; // e.g. "TK-2025-001"
+  id: string; // e.g. "TK-2026-001"
   numeroRegistro: string;
   asunto: string;
   descripcion: string;
@@ -66,6 +66,9 @@ export interface Ticket {
   ubicacionLat?: number;
   ubicacionLng?: number;
   direccionDetallada?: string;
+  lugarRegistro?: string;
+  canalIntake?: string;
+  canalRadicacion?: 'web_portal' | 'ventanilla_presencial' | 'inspeccion_campo' | 'whatsapp_comunal' | 'llamada_telefonica';
   fechaCreacion: string;
   horaCreacion: string;
   fechaActualizacion: string;
@@ -91,6 +94,8 @@ export interface User {
   nombre: string;
   email: string;
   rol: UserRole;
+  password?: string;
+  passwordHash?: string;
   avatarUrl?: string;
   cedula?: string;
   telefono?: string;
@@ -101,6 +106,7 @@ export interface User {
   estado?: 'activo' | 'inactivo';
   fechaRegistro?: string;
   horaRegistro?: string;
+  fechaHoraRegistro?: string;
   lugarRegistro?: string;
   ultimoAcceso?: string;
   departamento?: string;
@@ -119,8 +125,11 @@ export interface UserRegistrationInput {
   rol?: UserRole;
   departamento?: string;
   lugarRegistro?: string;
+  avatarUrl?: string;
   password?: string;
   confirmPassword?: string;
+  fechaRegistro?: string;
+  horaRegistro?: string;
 }
 
 export type DashboardWidgetId =

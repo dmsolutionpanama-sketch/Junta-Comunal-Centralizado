@@ -13,6 +13,8 @@ import {
   Sparkles,
   Briefcase,
   Zap,
+  User as UserIcon,
+  Camera,
 } from 'lucide-react';
 import { User, AppTheme } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
@@ -24,6 +26,7 @@ interface NavbarProps {
   onOpenNewTicket: () => void;
   onToggleDrawer: () => void;
   onOpenCitizenPortal?: () => void;
+  onOpenProfileModal?: () => void;
   unreadNotificationsCount?: number;
 }
 
@@ -34,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenNewTicket,
   onToggleDrawer,
   onOpenCitizenPortal,
+  onOpenProfileModal,
   unreadNotificationsCount = 3,
 }) => {
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useTheme();
@@ -243,8 +247,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {currentUser?.rol || 'Administrador'}
               </p>
             </div>
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-xs">
-              {currentUser?.nombre ? currentUser.nombre.charAt(0).toUpperCase() : 'U'}
+            <div className="relative">
+              {currentUser?.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.nombre}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border border-blue-600/40 shadow-xs"
+                />
+              ) : (
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-xs">
+                  {currentUser?.nombre ? currentUser.nombre.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
             </div>
             <ChevronDown className={`w-3.5 h-3.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`} />
           </button>
@@ -253,24 +267,52 @@ export const Navbar: React.FC<NavbarProps> = ({
           {showUserMenu && (
             <div
               id="user-dropdown-menu"
-              className={`absolute right-0 mt-2 w-60 rounded-2xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2 border ${
+              className={`absolute right-0 mt-2 w-64 rounded-2xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2 border ${
                 isDarkMode
                   ? 'bg-slate-900 border-slate-700 text-slate-100'
                   : 'bg-white border-slate-200 text-slate-900'
               }`}
             >
               <div className={`px-4 py-2.5 border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-                <p className="text-xs font-bold truncate">{currentUser?.nombre}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  {currentUser?.avatarUrl && (
+                    <img
+                      src={currentUser.avatarUrl}
+                      alt={currentUser.nombre}
+                      className="w-7 h-7 rounded-full object-cover border border-blue-500"
+                    />
+                  )}
+                  <p className="text-xs font-bold truncate">{currentUser?.nombre}</p>
+                </div>
                 <p className={`text-[11px] truncate ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                   {currentUser?.email}
                 </p>
-                <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 bg-blue-50 dark:bg-blue-950/60 dark:text-blue-400 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-900">
-                  <Shield className="w-3 h-3" />
-                  <span>Rol: {currentUser?.rol}</span>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 bg-blue-50 dark:bg-blue-950/60 dark:text-blue-400 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-900">
+                    <Shield className="w-3 h-3" />
+                    <span>Rol: {currentUser?.rol}</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">2026-08-28</span>
                 </div>
               </div>
 
               <div className="py-1">
+                {onOpenProfileModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      onOpenProfileModal();
+                    }}
+                    className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 cursor-pointer font-medium ${
+                      isDarkMode ? 'text-blue-400 hover:bg-slate-800' : 'text-blue-600 hover:bg-blue-50'
+                    }`}
+                  >
+                    <Camera className="w-3.5 h-3.5 text-blue-500" />
+                    Actualizar Foto y Perfil
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {

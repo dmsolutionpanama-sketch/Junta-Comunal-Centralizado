@@ -12,6 +12,7 @@ import { TraceabilityView } from './components/traceability/TraceabilityView';
 import { QuickSearchView } from './components/search/QuickSearchView';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { ReportsView } from './components/reports/ReportsView';
+import { AdminReportsMapView } from './components/admin/AdminReportsMapView';
 import { ConfigView } from './components/config/ConfigView';
 import { AdminMaintenanceView } from './components/admin/AdminMaintenanceView';
 import { NewTicketModal } from './components/tickets/NewTicketModal';
@@ -357,7 +358,26 @@ const MainAppContent: React.FC = () => {
                 <ReportsView tickets={tickets} />
               )}
 
-              {/* 5. Mantenimiento de Categorías & Roles (Superior Admin Only) */}
+              {/* 5. Mapa Cartográfico de Incidencias (Solo Administradores) */}
+              {currentView === 'mapa-reportes' && (
+                <AdminReportsMapView
+                  tickets={tickets}
+                  currentUser={currentUser}
+                  onUpdateTicketStatus={handleUpdateTicketStatus}
+                  onAddTraceNote={(tId, note, eventType, newStatus) => {
+                    handleAddTraceEvent(tId, {
+                      tipoEvento: eventType || 'comentario',
+                      responsable: currentUser?.nombre || 'Administrador',
+                      rolResponsable: currentUser?.rol || 'administrador',
+                      nota: note,
+                      estadoNuevo: newStatus,
+                    });
+                  }}
+                  onNavigateToTrace={handleNavigateToTrace}
+                />
+              )}
+
+              {/* 6. Mantenimiento de Categorías & Roles (Superior Admin Only) */}
               {currentView === 'mantenimiento-admin' && (
                 <AdminMaintenanceView
                   currentUser={currentUser}

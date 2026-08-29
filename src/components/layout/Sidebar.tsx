@@ -17,6 +17,7 @@ import {
   Trophy,
   Shield,
   Users,
+  Map,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
@@ -27,6 +28,7 @@ export type MainNavView =
   | 'trazabilidad'
   | 'busqueda-rapida'
   | 'reportes'
+  | 'mapa-reportes'
   | 'configuracion'
   | 'mantenimiento-admin'
   | 'dashboard';
@@ -189,30 +191,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="truncate">Reportes</span>
         </button>
 
-        {/* 5. Mantenimiento de Categorías & Roles (SOLO ADMINISTRADOR SUPERIOR) */}
+        {/* 5. Mantenimiento de Categorías & Roles y Mapa Cartográfico (SOLO ADMINISTRADOR SUPERIOR) */}
         {isSuperiorAdmin && (
-          <button
-            type="button"
-            id="nav-mantenimiento-admin"
-            onClick={() => onNavigate('mantenimiento-admin')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
-              currentView === 'mantenimiento-admin'
-                ? isDarkMode
-                  ? 'bg-purple-950/60 text-purple-300 font-semibold border border-purple-800/60'
-                  : 'bg-purple-50 text-purple-700 font-semibold border border-purple-200'
-                : isDarkMode
-                ? 'text-purple-300 hover:bg-purple-950/40 hover:text-purple-200'
-                : 'text-purple-700 hover:bg-purple-50/80 hover:text-purple-800'
-            }`}
-          >
-            <div className="flex items-center gap-3 truncate">
-              <Shield className="w-4.5 h-4.5 shrink-0 text-purple-600 dark:text-purple-400" />
-              <span className="truncate">Mantenimiento Admin</span>
-            </div>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 uppercase">
-              Admin
-            </span>
-          </button>
+          <>
+            {/* Mapa de Reportes (Solo Administradores) */}
+            <button
+              type="button"
+              id="nav-mapa-reportes"
+              onClick={() => onNavigate('mapa-reportes')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+                currentView === 'mapa-reportes'
+                  ? isDarkMode
+                    ? 'bg-purple-950/60 text-purple-300 font-semibold border border-purple-800/60'
+                    : 'bg-purple-50 text-purple-700 font-semibold border border-purple-200'
+                  : isDarkMode
+                  ? 'text-purple-300 hover:bg-purple-950/40 hover:text-purple-200'
+                  : 'text-purple-700 hover:bg-purple-50/80 hover:text-purple-800'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <Map className="w-4.5 h-4.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                <span className="truncate">Mapa de Incidencias</span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 uppercase">
+                Admin
+              </span>
+            </button>
+
+            {/* Mantenimiento Admin */}
+            <button
+              type="button"
+              id="nav-mantenimiento-admin"
+              onClick={() => onNavigate('mantenimiento-admin')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+                currentView === 'mantenimiento-admin'
+                  ? isDarkMode
+                    ? 'bg-purple-950/60 text-purple-300 font-semibold border border-purple-800/60'
+                    : 'bg-purple-50 text-purple-700 font-semibold border border-purple-200'
+                  : isDarkMode
+                  ? 'text-purple-300 hover:bg-purple-950/40 hover:text-purple-200'
+                  : 'text-purple-700 hover:bg-purple-50/80 hover:text-purple-800'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <Shield className="w-4.5 h-4.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                <span className="truncate">Mantenimiento Admin</span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 uppercase">
+                Admin
+              </span>
+            </button>
+          </>
         )}
 
         {/* 6. Configuración */}

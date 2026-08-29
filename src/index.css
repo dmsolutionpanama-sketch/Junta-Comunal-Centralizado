@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
 
 @layer base {
   :root {
@@ -55,4 +56,11 @@
 }
 .dark .scrollbar-thin::-webkit-scrollbar-thumb {
   background: rgba(100, 116, 139, 0.5);
+}
+
+/* Leaflet Custom DivIcon reset */
+.custom-clear-marker,
+.corregimiento-center-label {
+  background: transparent !important;
+  border: none !important;
 }

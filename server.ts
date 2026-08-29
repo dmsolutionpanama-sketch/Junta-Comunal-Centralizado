@@ -518,6 +518,8 @@ async function startServer() {
   // Tickets: List with Filters, Pagination, and RBAC Sensitive Field Masking
   app.get('/api/tickets', optionalAuth, (req: AuthenticatedRequest, res: Response) => {
     try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+
       const {
         categoria,
         sector,
@@ -527,11 +529,13 @@ async function startServer() {
         sortBy = 'fechaCreacion',
         sortOrder = 'desc',
         page = '1',
-        limit = '25',
+        limit = '1000',
+        all,
+        maskPublic,
       } = req.query;
 
       const userRole = req.user?.rol;
-      const isInternalStaff = userRole === 'administrador' || userRole === 'agente' || userRole === 'supervisor';
+      const isInternalStaff = maskPublic !== 'true';
 
       let filtered = [...ticketsDb];
 
@@ -592,15 +596,16 @@ async function startServer() {
         return 0;
       });
 
-      // Pagination
-      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-      const limitNum = Math.max(1, parseInt(limit as string, 10) || 25);
+      // Pagination / Full List
       const total = filtered.length;
-      const totalPages = Math.ceil(total / limitNum);
+      const isAll = all === 'true' || limit === 'all' || limit === '2000' || limit === '1000';
+      const limitNum = isAll ? Math.max(total, 1000) : Math.max(1, parseInt(limit as string, 10) || 50);
+      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+      const totalPages = Math.ceil(total / limitNum) || 1;
       const startIndex = (pageNum - 1) * limitNum;
-      const paginated = filtered.slice(startIndex, startIndex + limitNum);
+      const paginated = isAll ? filtered : filtered.slice(startIndex, startIndex + limitNum);
 
-      // Privacy: If request is from unauthenticated user or plain 'usuario', mask sensitive citizen PII
+      // Privacy: If maskPublic explicitly requested (public portals), mask sensitive citizen PII
       const sanitizedData = paginated.map((ticket) => {
         if (!isInternalStaff) {
           return {

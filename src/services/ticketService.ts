@@ -22,7 +22,11 @@ const STORAGE_KEY_TOKEN = 'ticketing_app_jwt_token_v1';
 
 export function getAuthToken(): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY_TOKEN);
+    return (
+      localStorage.getItem(STORAGE_KEY_TOKEN) ||
+      localStorage.getItem('ticketing_token') ||
+      null
+    );
   } catch {
     return null;
   }
@@ -32,8 +36,10 @@ export function setAuthToken(token: string | null) {
   try {
     if (token) {
       localStorage.setItem(STORAGE_KEY_TOKEN, token);
+      localStorage.setItem('ticketing_token', token);
     } else {
       localStorage.removeItem(STORAGE_KEY_TOKEN);
+      localStorage.removeItem('ticketing_token');
     }
   } catch (e) {
     console.warn('Could not save auth token', e);
@@ -147,15 +153,17 @@ export const ticketService = {
     };
   },
 
-  // Fetch all tickets directly
+  // Fetch all tickets directly from database (with no-cache and full limit)
   async getAllTickets(): Promise<Ticket[]> {
     try {
-      const res = await fetch('/api/tickets?limit=100', {
+      const res = await fetch(`/api/tickets?all=true&limit=2000&_t=${Date.now()}`, {
         headers: getAuthHeaders(),
+        cache: 'no-store',
       });
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
+          saveStoredTickets(json.data);
           return json.data;
         }
       }
@@ -163,6 +171,13 @@ export const ticketService = {
       // Fallback to local storage
     }
     return getStoredTickets();
+  },
+
+  // Manual or automatic synchronization from DB
+  async syncFromDatabase(): Promise<Ticket[]> {
+    const data = await this.getAllTickets();
+    this.triggerUpdateEvent();
+    return data;
   },
 
   // Update status directly

@@ -62,13 +62,14 @@ const MainAppContent: React.FC = () => {
   // Tickets State
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // UI Modals & Drawers
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
 
-  // Load Tickets on Mount & Subscribe to Real-Time Updates (WhatsApp / DB Sync)
+  // Initial Data Load & Event Listener
   useEffect(() => {
     const loadInitialTickets = async () => {
       setIsLoading(true);
@@ -85,7 +86,7 @@ const MainAppContent: React.FC = () => {
     loadInitialTickets();
     analytics.trackPageView(activeScreen);
 
-    // Subscribe to internal service event bus for instant updates (e.g., WhatsApp webhook / DB changes)
+    // Subscribe to internal service event bus for instant updates
     const unsubscribe = ticketService.subscribe(() => {
       ticketService.getAllTickets().then((data) => {
         setTickets(data);
@@ -105,6 +106,41 @@ const MainAppContent: React.FC = () => {
       window.removeEventListener('ticket_db_updated', handleDbUpdated);
     };
   }, [activeScreen]);
+
+  // Periodic 5-Second Complete System Auto-Polling (Database & WhatsApp Ingestion)
+  useEffect(() => {
+    const fetchLatest = async () => {
+      try {
+        setIsSyncing(true);
+        const freshData = await ticketService.getAllTickets();
+        if (Array.isArray(freshData) && freshData.length > 0) {
+          setTickets(freshData);
+        }
+      } catch (err) {
+        console.warn('[AutoSync 5s] Error polling from DB:', err);
+      } finally {
+        setTimeout(() => setIsSyncing(false), 600);
+      }
+    };
+
+    // Run poll every 5000 milliseconds (5 seconds)
+    const timer = setInterval(fetchLatest, 5000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Manual immediate synchronization trigger
+  const handleForceSync = async () => {
+    setIsSyncing(true);
+    try {
+      const fresh = await ticketService.syncFromDatabase();
+      setTickets(fresh);
+    } catch (err) {
+      console.error('Error in manual sync:', err);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 500);
+    }
+  };
 
   // Handle Login Success
   const handleLoginSuccess = (user: User, userToken: string) => {
@@ -268,6 +304,8 @@ const MainAppContent: React.FC = () => {
           onToggleDrawer={() => setIsDrawerOpen(true)}
           onOpenCitizenPortal={() => setActiveScreen('citizen-index')}
           onOpenProfileModal={() => setIsUserProfileModalOpen(true)}
+          onForceSync={handleForceSync}
+          isSyncing={isSyncing}
           unreadNotificationsCount={tickets.filter((t) => t.estado === 'abierto').length}
         />
 

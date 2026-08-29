@@ -17,6 +17,7 @@ import {
   Camera,
   RefreshCw,
   Database,
+  Menu,
 } from 'lucide-react';
 import { User, AppTheme } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
@@ -32,6 +33,7 @@ interface NavbarProps {
   onForceSync?: () => void;
   isSyncing?: boolean;
   unreadNotificationsCount?: number;
+  onToggleMobileMenu?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -45,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onForceSync,
   isSyncing = false,
   unreadNotificationsCount = 3,
+  onToggleMobileMenu,
 }) => {
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useTheme();
   const [searchInput, setSearchInput] = useState('');
@@ -104,27 +107,42 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className={`h-20 border-b px-4 lg:px-8 flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${
+    <header className={`h-16 md:h-20 border-b px-3 sm:px-4 lg:px-8 flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${
       isDarkMode
         ? 'bg-slate-900/95 border-slate-800 backdrop-blur-md'
         : 'bg-white border-slate-100'
     }`}>
-      {/* Search Bar Shortcut */}
-      <form onSubmit={handleSearchSubmit} className="relative w-56 sm:w-72 md:w-80">
-        <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
-        <input
-          id="navbar-search-input"
-          type="text"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Buscar por número o asunto..."
-          className={`w-full pl-10 pr-4 py-2 rounded-xl text-sm transition-all outline-hidden font-normal ${
-            isDarkMode
-              ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500 focus:bg-slate-800/90 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500'
-              : 'bg-slate-100 border-transparent text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500'
-          }`}
-        />
-      </form>
+      {/* Left Area: Mobile Hamburger & Search Bar */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 max-w-md">
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            id="btn-mobile-menu-toggle"
+            onClick={onToggleMobileMenu}
+            className="md:hidden p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer shrink-0"
+            title="Abrir Menú Principal"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
+        {/* Search Bar Shortcut */}
+        <form onSubmit={handleSearchSubmit} className="relative w-full max-w-xs sm:max-w-sm">
+          <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+          <input
+            id="navbar-search-input"
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar ticket..."
+            className={`w-full pl-9 sm:pl-10 pr-3 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm transition-all outline-hidden font-normal ${
+              isDarkMode
+                ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500 focus:bg-slate-800/90 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500'
+                : 'bg-slate-100 border-transparent text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500'
+            }`}
+          />
+        </form>
+      </div>
 
       {/* Right Controls Area */}
       <div className="flex items-center gap-2 lg:gap-3.5">

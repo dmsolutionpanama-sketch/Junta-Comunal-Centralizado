@@ -20,6 +20,7 @@ import { NewTicketModal } from './components/tickets/NewTicketModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
 import { CATEGORIAS_SISTEMA } from './config/categories';
 import { analytics } from './services/analytics';
+import { LayoutList, Map, PhoneCall, Search, Menu as MenuIcon, LayoutDashboard, Plus } from 'lucide-react';
 
 type AppScreen = 'citizen-index' | 'login' | 'staff-portal';
 
@@ -70,6 +71,7 @@ const MainAppContent: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Initial Data Load & Event Listener
   useEffect(() => {

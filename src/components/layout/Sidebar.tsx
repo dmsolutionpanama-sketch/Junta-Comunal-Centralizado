@@ -43,6 +43,8 @@ interface SidebarProps {
   onNavigate: (view: MainNavView, categoryId?: string | null) => void;
   openNewTicketModal: () => void;
   onOpenCitizenPortal?: () => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -51,37 +53,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onNavigate,
   onOpenCitizenPortal,
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
   const { isDarkMode } = useTheme();
   const [dashboardSubmenuOpen, setDashboardSubmenuOpen] = useState(true);
   const isSuperiorAdmin = currentUser?.rol === 'administrador';
 
-  return (
-    <aside
-      id="main-sidebar-nav"
-      className={`w-64 border-r flex flex-col shrink-0 h-screen sticky top-0 select-none z-30 transition-colors duration-200 ${
-        isDarkMode
-          ? 'bg-slate-900 border-slate-800 text-slate-200'
-          : 'bg-white border-slate-200/90 text-slate-700'
-      }`}
-    >
+  const handleItemClick = (view: MainNavView, categoryId?: string | null) => {
+    onNavigate(view, categoryId);
+    if (onCloseMobile) {
+      onCloseMobile();
+    }
+  };
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full select-none">
       {/* Brand Header */}
       <div
-        className={`h-20 px-6 border-b flex items-center gap-3 ${
+        className={`h-16 md:h-20 px-5 md:px-6 border-b flex items-center justify-between gap-3 ${
           isDarkMode ? 'border-slate-800' : 'border-slate-100'
         }`}
       >
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-xs">
-          <ShieldCheck className="w-5 h-5" />
-        </div>
-        <div>
-          <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-base tracking-tight leading-tight">
-            <span>Junta Comunal</span>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-xs">
+            <ShieldCheck className="w-5 h-5" />
           </div>
-          <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400">
-            Gestión de Incidencias
-          </span>
+          <div>
+            <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-base tracking-tight leading-tight">
+              <span>Junta Comunal</span>
+            </div>
+            <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400">
+              Gestión de Incidencias
+            </span>
+          </div>
         </div>
+
+        {onCloseMobile && (
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer text-sm font-bold"
+            title="Cerrar Menú"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Navigation Options */}
@@ -375,7 +392,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   );
                 })}
                 <li
-                  onClick={() => onNavigate('dashboard', null)}
+                  onClick={() => handleItemClick('dashboard', null)}
                   className={`flex items-center gap-1 cursor-pointer italic text-xs pt-1.5 border-t ${
                     isDarkMode
                       ? 'border-slate-700 text-slate-400 hover:text-blue-400'
@@ -402,7 +419,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {onOpenCitizenPortal && (
           <button
             type="button"
-            onClick={onOpenCitizenPortal}
+            onClick={() => {
+              onOpenCitizenPortal();
+              if (onCloseMobile) onCloseMobile();
+            }}
             id="btn-sidebar-citizen-portal"
             className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold text-xs transition-colors cursor-pointer border border-blue-200/60 dark:border-blue-900/50"
           >
@@ -421,6 +441,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-[11px] font-mono">v2.0.0</span>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside
+        id="main-sidebar-nav"
+        className={`hidden md:flex w-64 border-r flex-col shrink-0 h-screen sticky top-0 select-none z-30 transition-colors duration-200 ${
+          isDarkMode
+            ? 'bg-slate-900 border-slate-800 text-slate-200'
+            : 'bg-white border-slate-200/90 text-slate-700'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Drawer */}
+      {isMobileOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+            onClick={onCloseMobile}
+          />
+          <div
+            className={`relative w-72 max-w-[85vw] h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200 ${
+              isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-700'
+            }`}
+          >
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 };

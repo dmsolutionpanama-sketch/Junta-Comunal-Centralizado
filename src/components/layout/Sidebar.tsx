@@ -18,6 +18,8 @@ import {
   Shield,
   Users,
   Map,
+  PhoneCall,
+  MessageSquare,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
@@ -29,6 +31,7 @@ export type MainNavView =
   | 'busqueda-rapida'
   | 'reportes'
   | 'mapa-reportes'
+  | 'directorio-ciudadanos'
   | 'configuracion'
   | 'mantenimiento-admin'
   | 'dashboard';
@@ -214,6 +217,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="truncate">Mapa de Incidencias</span>
               </div>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 uppercase">
+                Admin
+              </span>
+            </button>
+
+            {/* Directorio Ciudadano & WhatsApp (Solo Administradores) */}
+            <button
+              type="button"
+              id="nav-directorio-ciudadanos"
+              onClick={() => onNavigate('directorio-ciudadanos')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+                currentView === 'directorio-ciudadanos'
+                  ? isDarkMode
+                    ? 'bg-emerald-950/60 text-emerald-300 font-semibold border border-emerald-800/60'
+                    : 'bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200'
+                  : isDarkMode
+                  ? 'text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200'
+                  : 'text-emerald-700 hover:bg-emerald-50/80 hover:text-emerald-800'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <PhoneCall className="w-4.5 h-4.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span className="truncate">Directorio & WhatsApp</span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 uppercase">
                 Admin
               </span>
             </button>

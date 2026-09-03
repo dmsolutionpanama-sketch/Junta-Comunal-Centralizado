@@ -17,6 +17,7 @@ interface GoogleMapLocationPickerProps {
   onLocationChange?: (location: { lat: number; lng: number; address: string }) => void;
   readOnly?: boolean;
   className?: string;
+  heightClass?: string;
 }
 
 // Key sector landmarks in the jurisdiction with accurate coordinates
@@ -42,6 +43,7 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
   onLocationChange,
   readOnly = false,
   className = '',
+  heightClass = 'h-56 sm:h-64',
 }) => {
   const [lat, setLat] = useState<number>(initialLat);
   const [lng, setLng] = useState<number>(initialLng);
@@ -201,7 +203,7 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
       )}
 
       {/* Interactive Map Frame with Pin Overlay */}
-      <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner bg-slate-100 dark:bg-slate-900 group">
+      <div className={`relative w-full ${heightClass} rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner bg-slate-100 dark:bg-slate-900 group`}>
         {/* Google Map iframe */}
         <iframe
           title="Google Map Location"

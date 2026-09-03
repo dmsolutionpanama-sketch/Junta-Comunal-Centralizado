@@ -199,6 +199,42 @@ export interface ValidationErrorItem {
   message: string;
 }
 
+export interface WhatsAppMessage {
+  id: string;
+  ticketId?: string;
+  telefono: string;
+  remitente: string;
+  mensaje: string;
+  sector: string;
+  fechaHora: string;
+  timestamp: number;
+  n8nExecutionId?: string;
+  minutosProcesamiento?: number;
+  estado: 'recibido' | 'procesado' | 'convertido_ticket' | 'error';
+}
+
+export interface WhatsAppStats {
+  totalMensajes: number;
+  mensajesHoy: number;
+  minutosDesdeUltimoMensaje: number;
+  ultimoMensajeFechaHora: string;
+  tiempoPromedioRespuestaMinutos: number;
+  minutosConexionActiva: number;
+  n8nStatus: 'activo' | 'conectado' | 'esperando';
+  n8nWebhookUrl?: string;
+  mensajesPorSector: Record<string, number>;
+  historial: WhatsAppMessage[];
+}
+
+export interface SectorChannelStats {
+  sector: string;
+  total: number;
+  whatsapp: number;
+  web: number;
+  telefono: number;
+  canalPredominante: 'WhatsApp' | 'Web Digital' | 'Telefónica';
+}
+
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;

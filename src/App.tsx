@@ -111,7 +111,7 @@ const MainAppContent: React.FC = () => {
     };
   }, [activeScreen]);
 
-  // Periodic 5-Second Complete System Auto-Polling (Database & WhatsApp Ingestion)
+  // Periodic 30-Second Complete System Auto-Polling (Database & WhatsApp Ingestion)
   useEffect(() => {
     const fetchLatest = async () => {
       try {
@@ -121,14 +121,14 @@ const MainAppContent: React.FC = () => {
           setTickets(freshData);
         }
       } catch (err) {
-        console.warn('[AutoSync 5s] Error polling from DB:', err);
+        console.warn('[AutoSync 30s] Error polling from DB:', err);
       } finally {
-        setTimeout(() => setIsSyncing(false), 600);
+        setTimeout(() => setIsSyncing(false), 800);
       }
     };
 
-    // Run poll every 5000 milliseconds (5 seconds)
-    const timer = setInterval(fetchLatest, 5000);
+    // Run poll every 30000 milliseconds (30 seconds) as explicitly requested
+    const timer = setInterval(fetchLatest, 30000);
 
     return () => clearInterval(timer);
   }, []);

@@ -40,6 +40,8 @@ export interface Adjunto {
   fechaSubida: string;
 }
 
+export type InteractionChannel = 'whatsapp' | 'llamada' | 'presencial' | 'web' | 'correo' | 'cuadrilla_campo';
+
 export interface TrazabilidadEvento {
   id: string;
   ticketId: string;
@@ -50,6 +52,8 @@ export interface TrazabilidadEvento {
   nota: string;
   estadoAnterior?: TicketStatus;
   estadoNuevo?: TicketStatus;
+  canalInteraccion?: InteractionChannel;
+  minutosConsumidos?: number;
 }
 
 export interface Ticket {
@@ -88,6 +92,45 @@ export type UserRole =
   | 'usuario_reportante';
 
 export type AppTheme = 'high-density' | 'clean-minimal' | 'professional-polish' | 'sleek-interface';
+
+export interface SystemCustomTheme {
+  // Front-end Colors (Portal Ciudadano / Vista Pública)
+  frontendPrimaryColor: string;
+  frontendAccentColor: string;
+  frontendBgColor: string;
+  frontendCardBg: string;
+  frontendTextColor: string;
+  frontendHeaderBg: string;
+
+  // Back-end Colors (Portal Administrativo / Junta Comunal)
+  backendSidebarBg: string;
+  backendHeaderBg: string;
+  backendBgColor: string;
+  backendPrimaryColor: string;
+  backendCardBg: string;
+  backendBorderColor: string;
+  backendTextColor: string;
+
+  // Dimensiones del Back End (Ancho y Alto)
+  sidebarWidth: number; // px (e.g. 260)
+  mainMaxWidth: string; // 'full' | '1400px' | '1600px' | '1800px'
+  navbarHeight: number; // px (e.g. 64)
+  cardPadding: 'compact' | 'normal' | 'relaxed';
+  tableRowHeight: number; // px (e.g. 44)
+  mapHeight: number; // px (e.g. 420)
+
+  // Tamaño de las Tipografías (Escala Tipográfica)
+  baseFontSize: number; // px (e.g. 14)
+  h1Size: number; // px (e.g. 24)
+  h2Size: number; // px (e.g. 18)
+  labelSize: number; // px (e.g. 12)
+  lineHeightScale: number; // e.g. 1.5
+  fontFamily: 'sans' | 'serif' | 'mono';
+
+  // Metadatos de persistencia
+  updatedAt?: string;
+  savedInDb?: boolean;
+}
 
 export interface User {
   id: string;

@@ -14,6 +14,7 @@ import {
   WhatsAppStats,
   WhatsAppMessage,
   SectorChannelStats,
+  SystemCustomTheme,
 } from '../types';
 import { MOCK_TICKETS, MOCK_CURRENT_USER } from '../data/mockData';
 import { CATEGORIAS_SISTEMA } from '../config/categories';
@@ -452,6 +453,8 @@ export const ticketService = {
       rolResponsable?: string;
       nota: string;
       estadoNuevo?: TicketStatus;
+      canalInteraccion?: TrazabilidadEvento['canalInteraccion'];
+      minutosConsumidos?: number;
     }
   ): Promise<Ticket | null> {
     try {
@@ -497,6 +500,8 @@ export const ticketService = {
       nota: eventData.nota,
       estadoAnterior: ticket.estado,
       estadoNuevo: eventData.estadoNuevo || ticket.estado,
+      canalInteraccion: eventData.canalInteraccion || 'whatsapp',
+      minutosConsumidos: eventData.minutosConsumidos || 0,
     };
 
     ticket.trazabilidad.push(newEvent);
@@ -1075,6 +1080,41 @@ export const ticketService = {
     saveStoredTickets(MOCK_TICKETS);
     this.triggerUpdateEvent();
     return MOCK_TICKETS;
+  },
+
+  // System Design & Customization (Front-end & Back-end, DB Persisted)
+  async getThemeSettings(): Promise<SystemCustomTheme | null> {
+    try {
+      const res = await fetch('/api/settings/theme');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          return json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch theme settings from API', e);
+    }
+    return null;
+  },
+
+  async saveThemeSettings(
+    theme: Partial<SystemCustomTheme>
+  ): Promise<{ success: boolean; data?: SystemCustomTheme; savedInDb?: boolean; message?: string }> {
+    try {
+      const res = await fetch('/api/settings/theme', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(theme),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return json;
+      }
+    } catch (e: any) {
+      console.warn('Could not save theme settings to API', e);
+    }
+    return { success: false, message: 'Fallo al conectar con el servidor' };
   },
 };
 

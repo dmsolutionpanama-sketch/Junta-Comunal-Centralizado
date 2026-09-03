@@ -182,3 +182,76 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
     return null;
   }
 }
+
+/**
+ * Ensure configuracion_sistema table exists in MySQL
+ */
+export async function ensureConfigTable(): Promise<boolean> {
+  try {
+    const db = await getDbPool();
+    if (!db) return false;
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS configuracion_sistema (
+        clave VARCHAR(100) NOT NULL PRIMARY KEY,
+        valor LONGTEXT NOT NULL,
+        fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB;
+    `);
+    return true;
+  } catch (err: any) {
+    console.warn('[MySQL Config] Error ensuring configuracion_sistema table:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Fetch a configuration setting from MySQL
+ */
+export async function getSystemConfigFromMySQL<T = any>(key: string): Promise<T | null> {
+  try {
+    const db = await getDbPool();
+    if (!db) return null;
+
+    await ensureConfigTable();
+
+    const [rows]: any = await db.query(
+      `SELECT valor FROM configuracion_sistema WHERE clave = ? LIMIT 1`,
+      [key]
+    );
+
+    if (Array.isArray(rows) && rows.length > 0 && rows[0].valor) {
+      return JSON.parse(rows[0].valor) as T;
+    }
+    return null;
+  } catch (err: any) {
+    console.warn(`[MySQL Config] Error getting config '${key}':`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Save a configuration setting into MySQL
+ */
+export async function saveSystemConfigToMySQL(key: string, value: any): Promise<boolean> {
+  try {
+    const db = await getDbPool();
+    if (!db) return false;
+
+    await ensureConfigTable();
+
+    const jsonStr = JSON.stringify(value);
+    await db.query(
+      `INSERT INTO configuracion_sistema (clave, valor)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE valor = VALUES(valor), fecha_actualizacion = NOW()`,
+      [key, jsonStr]
+    );
+    console.log(`✅ [MySQL Config] Configuración '${key}' guardada exitosamente en MySQL`);
+    return true;
+  } catch (err: any) {
+    console.warn(`[MySQL Config] Error saving config '${key}':`, err.message);
+    return false;
+  }
+}
+

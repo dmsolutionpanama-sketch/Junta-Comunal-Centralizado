@@ -99,6 +99,11 @@ export const addTraceEventSchema = z.object({
     .min(1, 'La nota de bitácora es obligatoria.')
     .min(3, 'La nota debe tener al menos 3 caracteres explicativos.'),
   estadoNuevo: z.enum(['abierto', 'en_progreso', 'resuelto', 'cerrado']).optional(),
+  canalInteraccion: z
+    .enum(['whatsapp', 'llamada', 'presencial', 'web', 'correo', 'cuadrilla_campo'])
+    .optional()
+    .default('whatsapp'),
+  minutosConsumidos: z.coerce.number().min(0).max(1440).optional().default(0),
 });
 
 /**

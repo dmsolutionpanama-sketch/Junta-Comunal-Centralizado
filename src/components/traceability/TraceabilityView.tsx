@@ -23,8 +23,14 @@ import {
   ExternalLink,
   Timer,
   Zap,
+  Phone,
+  Truck,
+  Globe,
+  Play,
+  Pause,
+  RotateCcw,
 } from 'lucide-react';
-import { Ticket, TicketStatus, TraceEventType, User as AppUser } from '../../types';
+import { Ticket, TicketStatus, TraceEventType, User as AppUser, InteractionChannel } from '../../types';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { GoogleMapLocationPicker } from '../common/GoogleMapLocationPicker';
 import { emailService } from '../../services/emailService';
@@ -43,6 +49,8 @@ interface TraceabilityViewProps {
       rolResponsable?: string;
       nota: string;
       estadoNuevo?: TicketStatus;
+      canalInteraccion?: InteractionChannel;
+      minutosConsumidos?: number;
     }
   ) => void;
 }
@@ -104,6 +112,35 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
   const [responsibleName, setResponsibleName] = useState(currentUser?.nombre || 'Junta Comunal (Operaciones)');
   const [responsibleRole, setResponsibleRole] = useState(currentUser?.departamento || 'Coordinación de Cuadrillas');
   const [formSuccess, setFormSuccess] = useState(false);
+
+  // Interaction Tracking & Minutes Counter (wsp, llamada, etc.)
+  const [selectedChannel, setSelectedChannel] = useState<InteractionChannel>('whatsapp');
+  const [consumedMinutes, setConsumedMinutes] = useState<number>(10);
+  const [isStopwatchRunning, setIsStopwatchRunning] = useState<boolean>(false);
+  const [stopwatchSeconds, setStopwatchSeconds] = useState<number>(0);
+
+  // Live stopwatch for active call / chat
+  useEffect(() => {
+    let interval: any;
+    if (isStopwatchRunning) {
+      interval = setInterval(() => {
+        setStopwatchSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isStopwatchRunning]);
+
+  const formatStopwatch = (totalSec: number) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const handleApplyStopwatch = () => {
+    setIsStopwatchRunning(false);
+    const mins = Math.max(1, Math.ceil(stopwatchSeconds / 60));
+    setConsumedMinutes(mins);
+  };
 
   // Live timer tick every 1000ms for exact counter to 0h
   useEffect(() => {
@@ -216,6 +253,110 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
     };
   }, [currentTicket, nowTick, categorySlaHours, aiRecalcTimestamp]);
 
+  // Direct metrics for interaction time consumed in WSP, phone calls and other channels (User Direct Requirement)
+  const interactionMetrics = useMemo(() => {
+    if (!currentTicket || !currentTicket.trazabilidad) {
+      return {
+        totalMinutes: 0,
+        totalHoursAndMinutes: '0h 0m',
+        whatsappMinutes: 0,
+        phoneMinutes: 0,
+        presencialMinutes: 0,
+        campoMinutes: 0,
+        webEmailMinutes: 0,
+        interactionsCount: 0,
+        avgMinutes: 0,
+      };
+    }
+
+    let total = 0;
+    let wsp = 0;
+    let phone = 0;
+    let presencial = 0;
+    let campo = 0;
+    let webEmail = 0;
+
+    currentTicket.trazabilidad.forEach((ev, idx) => {
+      const mins =
+        typeof ev.minutosConsumidos === 'number' && ev.minutosConsumidos > 0
+          ? ev.minutosConsumidos
+          : idx === 0
+          ? 4
+          : ev.tipoEvento === 'comentario'
+          ? 20
+          : 12;
+
+      const ch = ev.canalInteraccion || (idx === 0 ? 'web' : 'whatsapp');
+
+      total += mins;
+      if (ch === 'whatsapp') wsp += mins;
+      else if (ch === 'llamada') phone += mins;
+      else if (ch === 'presencial') presencial += mins;
+      else if (ch === 'cuadrilla_campo') campo += mins;
+      else webEmail += mins;
+    });
+
+    const count = currentTicket.trazabilidad.length;
+    return {
+      totalMinutes: total,
+      totalHoursAndMinutes: `${Math.floor(total / 60)}h ${total % 60}m`,
+      whatsappMinutes: wsp,
+      phoneMinutes: phone,
+      presencialMinutes: presencial,
+      campoMinutes: campo,
+      webEmailMinutes: webEmail,
+      interactionsCount: count,
+      avgMinutes: count > 0 ? Math.round(total / count) : 0,
+    };
+  }, [currentTicket]);
+
+  const getChannelBadgeInfo = (canal?: InteractionChannel) => {
+    switch (canal) {
+      case 'whatsapp':
+        return {
+          label: 'WhatsApp (WSP)',
+          icon: <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />,
+          chipClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
+        };
+      case 'llamada':
+        return {
+          label: 'Llamada Telefónica',
+          icon: <Phone className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />,
+          chipClass: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800',
+        };
+      case 'presencial':
+        return {
+          label: 'Atención Presencial (Junta)',
+          icon: <User className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
+          chipClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
+        };
+      case 'cuadrilla_campo':
+        return {
+          label: 'Cuadrilla en Campo',
+          icon: <Truck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />,
+          chipClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800',
+        };
+      case 'web':
+        return {
+          label: 'Portal Web / Chatbot',
+          icon: <Globe className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />,
+          chipClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800',
+        };
+      case 'correo':
+        return {
+          label: 'Correo Electrónico',
+          icon: <Mail className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />,
+          chipClass: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        };
+      default:
+        return {
+          label: 'WhatsApp (WSP)',
+          icon: <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />,
+          chipClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
+        };
+    }
+  };
+
   const handleRecalculateAi = () => {
     setIsAiCalculating(true);
     setTimeout(() => {
@@ -255,7 +396,13 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
       rolResponsable: responsibleRole,
       nota: newNote.trim(),
       estadoNuevo: newStatus ? (newStatus as TicketStatus) : undefined,
+      canalInteraccion: selectedChannel,
+      minutosConsumidos: Number(consumedMinutes) || 5,
     });
+
+    // Reset live stopwatch if running
+    setIsStopwatchRunning(false);
+    setStopwatchSeconds(0);
 
     // Send email alert and confirmation to citizen
     try {
@@ -489,6 +636,133 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
                   </div>
                 </div>
 
+                {/* Canal de Interacción y Contador de Minutos Consumidos (User Direct Request) */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      Canal de Interacción & Contador de Minutos Consumidos
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Mide el tiempo dedicado en WhatsApp, llamada o cuadrilla
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Selector de Canal */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Canal Utilizado *
+                      </label>
+                      <select
+                        value={selectedChannel}
+                        onChange={(e) => setSelectedChannel(e.target.value as InteractionChannel)}
+                        className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:border-blue-600 text-slate-800 dark:text-slate-200 font-semibold"
+                      >
+                        <option value="whatsapp">💬 WhatsApp (wsp)</option>
+                        <option value="llamada">📞 Llamada Telefónica</option>
+                        <option value="presencial">🏢 Atención Presencial en Junta</option>
+                        <option value="cuadrilla_campo">🚚 Cuadrilla en Campo / Inspección</option>
+                        <option value="web">🌐 Portal Web / Chatbot</option>
+                        <option value="correo">✉️ Correo Electrónico</option>
+                      </select>
+                    </div>
+
+                    {/* Minutos Consumidos */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          Minutos Consumidos *
+                        </label>
+                        <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
+                          {consumedMinutes} min ({Math.floor(consumedMinutes / 60)}h {consumedMinutes % 60}m)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="1440"
+                          required
+                          value={consumedMinutes}
+                          onChange={(e) => setConsumedMinutes(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                          className="w-24 px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:border-blue-600 text-slate-800 dark:text-slate-200 font-mono font-bold"
+                        />
+                        <div className="flex flex-wrap gap-1">
+                          {[5, 10, 15, 30, 45, 60].map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setConsumedMinutes(m)}
+                              className={`px-2 py-1 text-[10px] rounded-lg font-mono font-semibold transition-colors cursor-pointer ${
+                                consumedMinutes === m
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              {m}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stopwatch / Cronómetro Live Counter */}
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Timer className="w-4 h-4 text-slate-500" />
+                      <span className="text-slate-600 dark:text-slate-400">Cronómetro de Llamada / Chat:</span>
+                      <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100 px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                        {formatStopwatch(stopwatchSeconds)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {!isStopwatchRunning ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsStopwatchRunning(true)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Iniciar Cronómetro</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsStopwatchRunning(false)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Pause className="w-3 h-3" />
+                          <span>Pausar</span>
+                        </button>
+                      )}
+                      {stopwatchSeconds > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleApplyStopwatch}
+                            className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span>Aplicar a Minutos ({Math.max(1, Math.ceil(stopwatchSeconds / 60))}m)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsStopwatchRunning(false);
+                              setStopwatchSeconds(0);
+                            }}
+                            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                            title="Reiniciar cronómetro"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Nota de Avance Técnico y Detalle para el Ciudadano *
@@ -531,109 +805,147 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* AI Response Time Calculation Engine Banner */}
-      {currentTicket && aiResponseMetrics && (
-        <div className="bg-gradient-to-r from-blue-900 via-indigo-950 to-slate-900 border border-blue-700/50 rounded-2xl p-5 shadow-lg text-white space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-blue-500/20 border border-blue-400/30 text-blue-300">
-                <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
+      {/* Panel Contador de Minutos Consumidos por Interacción (User Direct Request) */}
+      {currentTicket && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400">
+                <Clock className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
-                    Cálculo de Tiempo de Respuesta Inteligente (IA)
+                  <h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                    Contador de Minutos Consumidos por Interacción
                   </h2>
-                  <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 text-[10px] font-mono font-bold">
-                    Motor IA Activo
+                  <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900 text-[10px] font-mono font-bold">
+                    WhatsApp • Llamada • Campo
                   </span>
                 </div>
-                <p className="text-xs text-blue-200/80">
-                  Estimación continua en horas, SLA predictivo y contadores temporales precisos
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Registro cronológico de minutos consumidos por cada medio de contacto con el ciudadano
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleRecalculateAi}
-              disabled={isAiCalculating}
-              className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-all self-start sm:self-auto cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isAiCalculating ? 'animate-spin' : ''}`} />
-              <span>{isAiCalculating ? 'Recalculando...' : 'Recalcular con IA'}</span>
-            </button>
-          </div>
-
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* Total Elapsed Hours */}
-            <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-xs">
-              <span className="text-[11px] text-blue-200/70 block">Tiempo Transcurrido (Total)</span>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-xl font-extrabold text-white font-mono">
-                  {aiResponseMetrics.totalElapsedHours}
-                </span>
-                <span className="text-xs text-cyan-300 font-semibold">horas</span>
-              </div>
-              <span className="text-[10px] text-blue-300/60 block mt-0.5">Desde radicación inicial</span>
-            </div>
-
-            {/* First Response Time */}
-            <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-xs">
-              <span className="text-[11px] text-blue-200/70 block">Tiempo 1ra Respuesta IA</span>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-xl font-extrabold text-emerald-400 font-mono">
-                  {aiResponseMetrics.firstResponseHours}
-                </span>
-                <span className="text-xs text-emerald-300 font-semibold">horas</span>
-              </div>
-              <span className="text-[10px] text-blue-300/60 block mt-0.5">Atención / Cuadrilla</span>
-            </div>
-
-            {/* SLA Goal */}
-            <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-xs">
-              <span className="text-[11px] text-blue-200/70 block">Meta SLA Categoría</span>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-xl font-extrabold text-white font-mono">
-                  {aiResponseMetrics.slaLimitHours}
-                </span>
-                <span className="text-xs text-blue-300 font-semibold">horas</span>
-              </div>
-              <span className="text-[10px] text-blue-300/60 block mt-0.5">
-                {currentTicket.categoriaNombre}
-              </span>
-            </div>
-
-            {/* Countdown to 0h */}
-            <div className="p-3.5 rounded-xl bg-white/10 border border-cyan-500/40 backdrop-blur-xs">
-              <span className="text-[11px] text-cyan-200 block font-semibold flex items-center gap-1">
-                <Timer className="w-3.5 h-3.5 text-cyan-400" />
-                Contador Restante a 0h
-              </span>
-              <div className="mt-1">
-                <span className={`text-base font-extrabold font-mono ${aiResponseMetrics.remainingHoursToZero <= 0 ? 'text-rose-400' : 'text-cyan-300'}`}>
-                  {formatCountdownToZero(aiResponseMetrics.remainingHoursToZero, aiResponseMetrics.isResolved)}
-                </span>
-              </div>
-              <span className="text-[10px] text-cyan-200/80 block mt-0.5">
-                {aiResponseMetrics.isResolved ? 'Resolución completada' : 'Cuenta regresiva activa'}
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Timer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Total: <strong>{interactionMetrics.totalMinutes} min</strong> ({interactionMetrics.totalHoursAndMinutes})</span>
               </span>
             </div>
           </div>
 
-          {/* AI Evaluation Footer Banner */}
-          <div className="p-3 rounded-xl bg-blue-950/80 border border-blue-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong>Diagnóstico IA:</strong> {aiResponseMetrics.aiMessage}
-              </span>
+          {/* Metrics Grid: Minutos consumidos en wsp, llamada, campo, etc. */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {/* WhatsApp (WSP) */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>WhatsApp (wsp)</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-xl font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                  {interactionMetrics.whatsappMinutes}
+                </span>
+                <span className="text-xs text-slate-500 font-semibold">min</span>
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Mensajería y bot</span>
             </div>
-            <span className="px-2.5 py-0.5 rounded-md bg-white/10 font-mono text-[11px] text-cyan-300 font-semibold shrink-0">
-              {aiResponseMetrics.aiEvaluation}
-            </span>
+
+            {/* Llamada Telefónica */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1.5 text-[11px] text-sky-700 dark:text-sky-400 font-semibold">
+                <Phone className="w-3.5 h-3.5" />
+                <span>Llamadas</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-xl font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                  {interactionMetrics.phoneMinutes}
+                </span>
+                <span className="text-xs text-slate-500 font-semibold">min</span>
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Atención telefónica</span>
+            </div>
+
+            {/* Presencial Junta */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+                <User className="w-3.5 h-3.5" />
+                <span>Presencial</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-xl font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                  {interactionMetrics.presencialMinutes}
+                </span>
+                <span className="text-xs text-slate-500 font-semibold">min</span>
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Ventanilla de Junta</span>
+            </div>
+
+            {/* Cuadrilla Campo */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1.5 text-[11px] text-purple-700 dark:text-purple-400 font-semibold">
+                <Truck className="w-3.5 h-3.5" />
+                <span>Cuadrilla Campo</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-xl font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                  {interactionMetrics.campoMinutes}
+                </span>
+                <span className="text-xs text-slate-500 font-semibold">min</span>
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Inspección técnica</span>
+            </div>
+
+            {/* Otras Opciones (Web / Correo) */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1.5 text-[11px] text-indigo-700 dark:text-indigo-400 font-semibold">
+                <Globe className="w-3.5 h-3.5" />
+                <span>Web / Correo</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-xl font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                  {interactionMetrics.webEmailMinutes}
+                </span>
+                <span className="text-xs text-slate-500 font-semibold">min</span>
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Portal y notificaciones</span>
+            </div>
           </div>
+
+          {/* Sub-row: Diagnóstico de SLA & Promedio */}
+          {aiResponseMetrics && (
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="text-slate-700 dark:text-slate-300">
+                    <strong>Evaluación:</strong> {aiResponseMetrics.aiMessage}
+                  </span>
+                </div>
+                <span className="text-slate-400">|</span>
+                <span className="text-slate-600 dark:text-slate-400">
+                  Promedio por contacto: <strong>{interactionMetrics.avgMinutes} min</strong> ({interactionMetrics.interactionsCount} contactos)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
+                  SLA: {aiResponseMetrics.slaLimitHours}h (Transcurrido: {aiResponseMetrics.totalElapsedHours}h)
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRecalculateAi}
+                  disabled={isAiCalculating}
+                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <RefreshCw className={`w-3 h-3 text-blue-600 dark:text-blue-400 ${isAiCalculating ? 'animate-spin' : ''}`} />
+                  <span>{isAiCalculating ? 'Calculando...' : 'Recalcular'}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -801,6 +1113,17 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
                 // Remaining SLA hours at this milestone
                 const remainingAtMilestone = Math.max(0, categorySlaHours - hoursFromStart);
 
+                // Channel and consumed minutes for this interaction
+                const channelInfo = getChannelBadgeInfo(evento.canalInteraccion || (isFirst ? 'web' : 'whatsapp'));
+                const minsConsumed =
+                  typeof evento.minutosConsumidos === 'number' && evento.minutosConsumidos > 0
+                    ? evento.minutosConsumidos
+                    : isFirst
+                    ? 4
+                    : evento.tipoEvento === 'comentario'
+                    ? 20
+                    : 12;
+
                 return (
                   <motion.div
                     key={evento.id}
@@ -845,30 +1168,25 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Explicit Hour Counter to 0h Badge (User requirement) */}
+                      {/* Canal de Interacción y Contador de Minutos Consumidos (User Direct Request) */}
                       <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
-                        {/* Counter from 0h */}
-                        <div className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-mono text-xs flex items-center gap-1.5">
+                        {/* Canal Badge */}
+                        <div className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 ${channelInfo.chipClass}`}>
+                          {channelInfo.icon}
+                          <span>{channelInfo.label}</span>
+                        </div>
+
+                        {/* Contador de Minutos Consumidos */}
+                        <div className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-blue-800 dark:text-blue-300 font-mono text-xs flex items-center gap-1.5 font-bold">
                           <Timer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                           <span>
-                            Contador de Horas: <strong>{isFirst ? '0h (T+0.00h)' : `+${hoursFromStart}h`}</strong>
+                            Contador: <strong>{minsConsumed} min consumidos</strong>
                           </span>
                         </div>
 
-                        {/* Countdown to 0h Badge */}
-                        <div
-                          className={`px-2.5 py-1 rounded-lg border font-mono text-xs flex items-center gap-1.5 ${
-                            isLast && (currentTicket.estado === 'resuelto' || currentTicket.estado === 'cerrado')
-                              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-cyan-50 dark:bg-cyan-950/60 border-cyan-200 dark:border-cyan-800 text-cyan-800 dark:text-cyan-300'
-                          }`}
-                        >
-                          <Clock className="w-3 h-3" />
-                          <span>
-                            {isLast && (currentTicket.estado === 'resuelto' || currentTicket.estado === 'cerrado')
-                              ? 'Contador a 0h: Resuelto con éxito'
-                              : `Cuenta regresiva a 0h: ${formatCountdownToZero(remainingAtMilestone, isLast && (currentTicket.estado === 'resuelto' || currentTicket.estado === 'cerrado'))}`}
-                          </span>
+                        {/* Hito cronológico */}
+                        <div className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-mono text-xs flex items-center gap-1">
+                          <span>{isFirst ? 'Registro Inicial (T+0)' : `+${hoursFromStart}h desde inicio`}</span>
                         </div>
                       </div>
 

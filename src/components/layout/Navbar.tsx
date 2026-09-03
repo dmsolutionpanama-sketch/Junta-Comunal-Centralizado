@@ -49,7 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   unreadNotificationsCount = 3,
   onToggleMobileMenu,
 }) => {
-  const { theme, setTheme, isDarkMode, toggleDarkMode } = useTheme();
+  const { theme, setTheme, isDarkMode, toggleDarkMode, systemTheme } = useTheme();
   const [searchInput, setSearchInput] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -107,11 +107,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className={`h-16 md:h-20 border-b px-3 sm:px-4 lg:px-8 flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${
-      isDarkMode
-        ? 'bg-slate-900/95 border-slate-800 backdrop-blur-md'
-        : 'bg-white border-slate-100'
-    }`}>
+    <header
+      style={{
+        height: `${systemTheme.navbarHeight}px`,
+        backgroundColor: isDarkMode ? undefined : systemTheme.backendHeaderBg,
+      }}
+      className={`border-b px-3 sm:px-4 lg:px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-200 ${
+        isDarkMode
+          ? 'bg-slate-900/95 border-slate-800 backdrop-blur-md'
+          : 'border-slate-100'
+      }`}
+    >
       {/* Left Area: Mobile Hamburger & Search Bar */}
       <div className="flex items-center gap-2 sm:gap-3 flex-1 max-w-md">
         {onToggleMobileMenu && (

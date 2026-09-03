@@ -15,6 +15,7 @@ import { ReportsView } from './components/reports/ReportsView';
 import { AdminReportsMapView } from './components/admin/AdminReportsMapView';
 import { AdminCitizensDirectoryView } from './components/admin/AdminCitizensDirectoryView';
 import { ConfigView } from './components/config/ConfigView';
+import { CustomizationSettingsView } from './components/config/CustomizationSettingsView';
 import { AdminMaintenanceView } from './components/admin/AdminMaintenanceView';
 import { NewTicketModal } from './components/tickets/NewTicketModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
@@ -25,7 +26,7 @@ import { LayoutList, Map, PhoneCall, Search, Menu as MenuIcon, LayoutDashboard, 
 type AppScreen = 'citizen-index' | 'login' | 'staff-portal';
 
 const MainAppContent: React.FC = () => {
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, systemTheme } = useTheme();
 
   // Screen Mode: Starts at 'citizen-index' (Vista del Ciudadano) as requested
   const [activeScreen, setActiveScreen] = useState<AppScreen>('citizen-index');
@@ -231,6 +232,8 @@ const MainAppContent: React.FC = () => {
       rolResponsable?: string;
       nota: string;
       estadoNuevo?: TicketStatus;
+      canalInteraccion?: any;
+      minutosConsumidos?: number;
     }
   ) => {
     try {
@@ -314,7 +317,18 @@ const MainAppContent: React.FC = () => {
         />
 
         {/* Dynamic Page Views */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin">
+        <main
+          style={{
+            backgroundColor: isDarkMode ? undefined : systemTheme.backendBgColor,
+          }}
+          className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin transition-colors"
+        >
+          <div
+            style={{
+              maxWidth: systemTheme.mainMaxWidth === 'full' ? '100%' : systemTheme.mainMaxWidth,
+            }}
+            className="w-full mx-auto"
+          >
           {isLoading ? (
             <div className="h-64 flex flex-col items-center justify-center gap-3">
               <div className="w-8 h-8 border-3 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
@@ -408,12 +422,17 @@ const MainAppContent: React.FC = () => {
                 />
               )}
 
-              {/* 6. Configuración & Base de Datos */}
+              {/* 6. Personalización & Diseño (Front-end & Back-end, Colores, Dimensiones y Tipografía) */}
+              {currentView === 'personalizacion-diseno' && (
+                <CustomizationSettingsView />
+              )}
+
+              {/* 7. Configuración & Base de Datos */}
               {currentView === 'configuracion' && (
                 <ConfigView onResetMockData={handleResetMockData} />
               )}
 
-              {/* 7. Dashboard (ALWAYS LAST OPTION in Sidebar hierarchy) */}
+              {/* 8. Dashboard (ALWAYS LAST OPTION in Sidebar hierarchy) */}
               {currentView === 'dashboard' && (
                 <DashboardView
                   tickets={tickets}
@@ -423,6 +442,7 @@ const MainAppContent: React.FC = () => {
               )}
             </>
           )}
+          </div>
         </main>
       </div>
 

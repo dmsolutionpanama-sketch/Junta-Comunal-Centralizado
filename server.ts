@@ -18,7 +18,9 @@ import {
   optionalAuth,
   AuthenticatedRequest,
 } from './src/server/auth';
-import { getDbPool, getDbStatus, queryTicketsFromMySQL } from './src/server/db';
+import { getDbPool, getDbStatus, queryTicketsFromMySQL, getSystemConfigFromMySQL, saveSystemConfigToMySQL } from './src/server/db';
+import { DEFAULT_SYSTEM_THEME } from './src/config/defaultTheme';
+import { SystemCustomTheme } from './src/types';
 
 // Centralized master data loaded from catalogs.json
 let systemCategories = [...catalogsData.categorias];
@@ -27,6 +29,7 @@ let systemSectors = [...catalogsData.sectores];
 // In-memory runtime state (seeded with realistic mock data)
 let ticketsDb: Ticket[] = JSON.parse(JSON.stringify(MOCK_TICKETS));
 let usersDb: User[] = JSON.parse(JSON.stringify(MOCK_SYSTEM_USERS));
+let systemCustomTheme: SystemCustomTheme = JSON.parse(JSON.stringify(DEFAULT_SYSTEM_THEME));
 
 // Pre-configured system demo users with realistic roles
 const SYSTEM_USERS = [
@@ -1186,6 +1189,8 @@ async function startServer() {
         nota: nota.trim(),
         estadoAnterior: ticket.estado,
         estadoNuevo: estadoNuevo || ticket.estado,
+        canalInteraccion: (validation.data as any).canalInteraccion || 'whatsapp',
+        minutosConsumidos: Number((validation.data as any).minutosConsumidos) || 0,
       };
 
       ticket.trazabilidad.push(newEvent);
@@ -1496,6 +1501,64 @@ async function startServer() {
       },
     });
   });
+
+  // ==========================================
+  // SYSTEM DESIGN & CUSTOMIZATION API (DB PERSISTED)
+  // ==========================================
+  app.get('/api/settings/theme', async (req: Request, res: Response) => {
+    try {
+      const dbConfig = await getSystemConfigFromMySQL<SystemCustomTheme>('system_theme_v1');
+      if (dbConfig) {
+        systemCustomTheme = {
+          ...systemCustomTheme,
+          ...dbConfig,
+          savedInDb: true,
+        };
+      }
+      return res.json({
+        success: true,
+        data: systemCustomTheme,
+        dbStatus: getDbStatus(),
+      });
+    } catch (err: any) {
+      return res.json({
+        success: true,
+        data: systemCustomTheme,
+        dbStatus: getDbStatus(),
+      });
+    }
+  });
+
+  const handleSaveTheme = async (req: Request, res: Response) => {
+    try {
+      const updates = req.body;
+      systemCustomTheme = {
+        ...systemCustomTheme,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const savedToMySQL = await saveSystemConfigToMySQL('system_theme_v1', systemCustomTheme);
+      systemCustomTheme.savedInDb = savedToMySQL;
+
+      return res.json({
+        success: true,
+        data: systemCustomTheme,
+        savedInDb: savedToMySQL,
+        message: savedToMySQL
+          ? 'Configuración guardada en la base de datos MySQL (u483786231_ticket_db).'
+          : 'Configuración guardada en memoria y archivo local de persistencia.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        message: 'Error al persistir configuración: ' + err.message,
+      });
+    }
+  };
+
+  app.post('/api/settings/theme', handleSaveTheme);
+  app.put('/api/settings/theme', handleSaveTheme);
 
   // ==========================================
   // VITE MIDDLEWARE SETUP

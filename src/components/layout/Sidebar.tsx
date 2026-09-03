@@ -20,6 +20,7 @@ import {
   Map,
   PhoneCall,
   MessageSquare,
+  Sliders,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
@@ -32,6 +33,7 @@ export type MainNavView =
   | 'reportes'
   | 'mapa-reportes'
   | 'directorio-ciudadanos'
+  | 'personalizacion-diseno'
   | 'configuracion'
   | 'mantenimiento-admin'
   | 'dashboard';
@@ -56,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobileOpen = false,
   onCloseMobile,
 }) => {
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, systemTheme } = useTheme();
   const [dashboardSubmenuOpen, setDashboardSubmenuOpen] = useState(true);
   const isSuperiorAdmin = currentUser?.rol === 'administrador';
 
@@ -288,7 +290,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </>
         )}
 
-        {/* 6. Configuración */}
+        {/* 6. Personalización & Diseño del Sistema */}
+        <button
+          type="button"
+          id="nav-personalizacion-diseno"
+          onClick={() => onNavigate('personalizacion-diseno')}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+            currentView === 'personalizacion-diseno'
+              ? isDarkMode
+                ? 'bg-blue-950/60 text-blue-400 font-semibold border border-blue-900/60'
+                : 'bg-blue-50 text-blue-600 font-semibold'
+              : isDarkMode
+              ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Sliders
+            className={`w-4.5 h-4.5 shrink-0 ${
+              currentView === 'personalizacion-diseno'
+                ? 'text-blue-500'
+                : isDarkMode
+                ? 'text-slate-400'
+                : 'text-slate-400'
+            }`}
+          />
+          <span className="truncate">Diseño & Personalización</span>
+        </button>
+
+        {/* 7. Configuración & BD */}
         <button
           type="button"
           id="nav-configuracion"
@@ -449,10 +478,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Desktop Sidebar */}
       <aside
         id="main-sidebar-nav"
-        className={`hidden md:flex w-64 border-r flex-col shrink-0 h-screen sticky top-0 select-none z-30 transition-colors duration-200 ${
+        style={{
+          width: `${systemTheme.sidebarWidth}px`,
+          backgroundColor: isDarkMode ? undefined : systemTheme.backendSidebarBg,
+        }}
+        className={`hidden md:flex border-r flex-col shrink-0 h-screen sticky top-0 select-none z-30 transition-all duration-200 ${
           isDarkMode
             ? 'bg-slate-900 border-slate-800 text-slate-200'
-            : 'bg-white border-slate-200/90 text-slate-700'
+            : 'border-slate-200/90 text-slate-700'
         }`}
       >
         {sidebarContent}

@@ -90,6 +90,56 @@ export function getDbStatus() {
   };
 }
 
+// Fallback coordinate centers for sectors in Ernesto Córdoba Campos / Panamá Norte
+const SECTOR_COORDS_MAP: Record<string, { lat: number; lng: number }> = {
+  'Altos de Las Cumbres': { lat: 9.0834, lng: -79.5312 },
+  'Nueva Libia': { lat: 9.0945, lng: -79.5241 },
+  'Villa Zaita': { lat: 9.0712, lng: -79.5188 },
+  'Gonzalillo': { lat: 9.0882, lng: -79.5153 },
+  'Ciudad San Lorenzo': { lat: 9.0991, lng: -79.5388 },
+  'Colinas del Rocío': { lat: 9.0776, lng: -79.5267 },
+  'Las Praderas del Rocío': { lat: 9.0744, lng: -79.5291 },
+  'Reparto Portofino': { lat: 9.0815, lng: -79.5219 },
+  'Villa María': { lat: 9.0911, lng: -79.5304 },
+  'Villa Milagros': { lat: 9.0858, lng: -79.5273 },
+  'Milla 9': { lat: 9.0683, lng: -79.5142 },
+  'Santa Rita': { lat: 9.0934, lng: -79.5192 },
+  'Las Lajas': { lat: 9.0905, lng: -79.5340 },
+  'Chilibre Centro': { lat: 9.1412, lng: -79.6150 },
+  'Villa Grecia': { lat: 9.1020, lng: -79.5390 },
+};
+
+/**
+ * Ensure table schemas in MySQL have required columns for WhatsApp & Web parity
+ */
+export async function ensureDatabaseTablesSchema(): Promise<boolean> {
+  try {
+    const db = await getDbPool();
+    if (!db) return false;
+
+    // Ensure columns exist on tickets table without crashing if they already do
+    const alterQueries = [
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ubicacion_lat DECIMAL(10, 7) NULL;",
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ubicacion_lng DECIMAL(10, 7) NULL;",
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS canal_intake VARCHAR(100) DEFAULT 'Portal Web Ciudadano';",
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS canal_radicacion VARCHAR(50) DEFAULT 'web_portal';",
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS lugar_registro VARCHAR(100) DEFAULT 'Plataforma Web';"
+    ];
+
+    for (const q of alterQueries) {
+      try {
+        await db.query(q);
+      } catch {
+        // Ignored if syntax is unsupported in specific MySQL versions or already exists
+      }
+    }
+    return true;
+  } catch (err: any) {
+    console.warn('[MySQL Schema] Warning checking tickets table schema:', err.message);
+    return false;
+  }
+}
+
 /**
  * Fetch all tickets from MySQL tables with fallback to in-memory/mock
  */
@@ -98,7 +148,7 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
     const db = await getDbPool();
     if (!db) return null;
 
-    // Check if tickets table exists
+    // Check if tickets table exists and query all fields
     const [rows]: any = await db.query(`
       SELECT 
         t.id, 
@@ -112,6 +162,9 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
         t.ubicacion_lat as ubicacionLat, 
         t.ubicacion_lng as ubicacionLng, 
         t.direccion_detallada as direccionDetallada, 
+        t.lugar_registro as lugarRegistro,
+        t.canal_intake as canalIntake,
+        t.canal_radicacion as canalRadicacion,
         t.fecha_creacion as fechaCreacion, 
         t.hora_creacion as horaCreacion, 
         t.fecha_actualizacion as fechaActualizacion,
@@ -131,50 +184,75 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
 
     if (!Array.isArray(rows)) return null;
 
-    // Map rows to Ticket interface
-    const tickets: Ticket[] = rows.map((row: any) => ({
-      id: String(row.id || row.numeroRegistro),
-      numeroRegistro: row.numeroRegistro || `TK-${row.id}`,
-      asunto: row.asunto || 'Incidencia sin asunto',
-      categoriaId: row.categoriaId || 'general',
-      categoriaNombre: row.categoriaId || 'General',
-      descripcion: row.descripcion || '',
-      estado: row.estado || 'abierto',
-      prioridad: row.prioridad || 'media',
-      sectorId: row.sectorId || 'Sector General',
-      sectorNombre: row.sectorId || 'Sector General',
-      ubicacionLat: Number(row.ubicacionLat) || 9.08,
-      ubicacionLng: Number(row.ubicacionLng) || -79.53,
-      direccionDetallada: row.direccionDetallada || '',
-      lugarRegistro: 'Base de Datos Central',
-      canalIntake: 'Base de Datos MySQL',
-      canalRadicacion: 'web_portal',
-      fechaCreacion: row.fechaCreacion ? String(row.fechaCreacion).slice(0, 10) : '2026-08-29',
-      horaCreacion: row.horaCreacion ? String(row.horaCreacion).slice(0, 8) : '12:00:00',
-      fechaActualizacion: row.fechaActualizacion ? String(row.fechaActualizacion) : '2026-08-29 12:00:00',
-      reportante: {
-        nombre: row.rep_nombre || 'Ciudadano',
-        cedula: row.rep_cedula || 'N/A',
-        telefono: row.rep_telefono || '',
-        email: row.rep_email || '',
-        genero: row.rep_genero || 'otro',
-        edad: Number(row.rep_edad) || 30,
-        sector: row.rep_sector || row.sectorId || '',
-      },
-      adjuntos: [],
-      trazabilidad: [
-        {
-          id: `tr-${row.id}-1`,
-          ticketId: String(row.id),
-          tipoEvento: 'creacion',
-          fechaHora: row.fechaCreacion ? String(row.fechaCreacion) : '2026-08-29 12:00:00',
-          responsable: 'Sistema MySQL',
-          rolResponsable: 'Hostinger DB',
-          nota: 'Ticket cargado desde la base de datos u483786231_ticket_db',
-          estadoNuevo: row.estado || 'abierto',
+    // Map rows to Ticket interface preserving WhatsApp vs Web channels & coordinates
+    const tickets: Ticket[] = rows.map((row: any) => {
+      const sectorStr = row.sectorId || row.rep_sector || 'Altos de Las Cumbres';
+      const fallbackCoord = SECTOR_COORDS_MAP[sectorStr] || { lat: 9.0834, lng: -79.5312 };
+
+      const latNum = Number(row.ubicacionLat);
+      const lngNum = Number(row.ubicacionLng);
+      const validLat = !isNaN(latNum) && latNum !== 0 ? latNum : fallbackCoord.lat;
+      const validLng = !isNaN(lngNum) && lngNum !== 0 ? lngNum : fallbackCoord.lng;
+
+      // Identify whether this ticket was generated from WhatsApp
+      const isWpp = 
+        (row.canalRadicacion && String(row.canalRadicacion).toLowerCase().includes('whatsapp')) ||
+        (row.canalIntake && String(row.canalIntake).toLowerCase().includes('whatsapp')) ||
+        String(row.id || '').startsWith('TK-WPP') ||
+        String(row.numeroRegistro || '').includes('WPP');
+
+      const canalRadicacion = isWpp ? 'whatsapp_comunal' : (row.canalRadicacion || 'web_portal');
+      const canalIntake = isWpp ? 'WhatsApp Comunitario (n8n)' : (row.canalIntake || 'Portal Web Ciudadano');
+      const lugarRegistro = isWpp ? 'WhatsApp Comunitario (n8n)' : (row.lugarRegistro || 'Plataforma Web');
+
+      return {
+        id: String(row.id || row.numeroRegistro),
+        numeroRegistro: row.numeroRegistro || `TK-${row.id}`,
+        asunto: row.asunto || 'Incidencia comunal registrada',
+        categoriaId: row.categoriaId || 'general',
+        categoriaNombre: row.categoriaId || 'General',
+        descripcion: row.descripcion || '',
+        estado: row.estado || 'abierto',
+        prioridad: row.prioridad || 'media',
+        sectorId: sectorStr,
+        sectorNombre: sectorStr,
+        ubicacionLat: validLat,
+        ubicacionLng: validLng,
+        direccionDetallada: row.direccionDetallada || (isWpp ? `Reporte recibido vía WhatsApp - ${sectorStr}` : ''),
+        lugarRegistro,
+        canalIntake,
+        canalRadicacion,
+        fechaCreacion: row.fechaCreacion ? String(row.fechaCreacion).slice(0, 10) : '2026-08-29',
+        horaCreacion: row.horaCreacion ? String(row.horaCreacion).slice(0, 8) : '12:00:00',
+        fechaActualizacion: row.fechaActualizacion ? String(row.fechaActualizacion) : '2026-08-29 12:00:00',
+        reportante: {
+          nombre: row.rep_nombre || (isWpp ? 'Ciudadano WhatsApp' : 'Ciudadano Residente'),
+          cedula: row.rep_cedula || (isWpp ? '8-WhatsApp' : 'N/A'),
+          telefono: row.rep_telefono || '',
+          email: row.rep_email || (isWpp ? 'contacto@whatsapp.comunal' : ''),
+          genero: row.rep_genero || 'otro',
+          edad: Number(row.rep_edad) || 35,
+          sector: sectorStr,
         },
-      ],
-    }));
+        adjuntos: [],
+        trazabilidad: [
+          {
+            id: `tr-${row.id}-1`,
+            ticketId: String(row.id),
+            tipoEvento: 'creacion',
+            fechaHora: row.fechaCreacion ? String(row.fechaCreacion) : '2026-08-29 12:00:00',
+            responsable: isWpp ? 'Bot WhatsApp & n8n' : 'Sistema Portal Web',
+            rolResponsable: isWpp ? 'Canal Automatizado WhatsApp' : 'Hostinger DB',
+            nota: isWpp
+              ? 'Incidencia recibida e ingresada automáticamente desde WhatsApp mediante integración n8n.'
+              : 'Ticket registrado y persistido en la base de datos central.',
+            estadoNuevo: row.estado || 'abierto',
+            canalInteraccion: isWpp ? 'whatsapp' : 'web',
+            minutosConsumidos: isWpp ? 3 : 2,
+          },
+        ],
+      };
+    });
 
     return tickets;
   } catch (err) {

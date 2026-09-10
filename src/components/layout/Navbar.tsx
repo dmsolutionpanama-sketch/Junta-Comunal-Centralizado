@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Bell,
@@ -18,9 +18,14 @@ import {
   RefreshCw,
   Database,
   Menu,
+  Tag,
+  MapPin,
+  FileText,
+  X,
 } from 'lucide-react';
-import { User, AppTheme } from '../../types';
+import { User, AppTheme, Ticket } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
+import { matchesTicketSearch, getTicketMatchReason } from '../../utils/ticketSearch';
 
 interface NavbarProps {
   currentUser: User | null;
@@ -34,6 +39,8 @@ interface NavbarProps {
   isSyncing?: boolean;
   unreadNotificationsCount?: number;
   onToggleMobileMenu?: () => void;
+  tickets?: Ticket[];
+  onSelectTicket?: (ticketId: string) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -48,11 +55,32 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSyncing = false,
   unreadNotificationsCount = 3,
   onToggleMobileMenu,
+  tickets = [],
+  onSelectTicket,
 }) => {
   const { theme, setTheme, isDarkMode, toggleDarkMode, systemTheme } = useTheme();
   const [searchInput, setSearchInput] = useState('');
+  const [showLiveSearch, setShowLiveSearch] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close live search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowLiveSearch(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Compute matching tickets for live dropdown
+  const liveResults = React.useMemo(() => {
+    if (!searchInput.trim() || !tickets || tickets.length === 0) return [];
+    return tickets.filter((t) => matchesTicketSearch(t, searchInput)).slice(0, 5);
+  }, [searchInput, tickets]);
 
   useEffect(() => {
     const updateTime = () => {
@@ -132,22 +160,109 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        {/* Search Bar Shortcut */}
-        <form onSubmit={handleSearchSubmit} className="relative w-full max-w-xs sm:max-w-sm">
-          <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
-          <input
-            id="navbar-search-input"
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Buscar ticket..."
-            className={`w-full pl-9 sm:pl-10 pr-3 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm transition-all outline-hidden font-normal ${
-              isDarkMode
-                ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500 focus:bg-slate-800/90 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500'
-                : 'bg-slate-100 border-transparent text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500'
-            }`}
-          />
-        </form>
+        {/* Search Bar Shortcut with Live Multi-Criteria Dropdown */}
+        <div ref={searchContainerRef} className="relative w-full max-w-xs sm:max-w-md">
+          <form onSubmit={handleSearchSubmit} className="relative w-full">
+            <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+            <input
+              id="navbar-search-input"
+              type="text"
+              value={searchInput}
+              onFocus={() => setShowLiveSearch(true)}
+              onChange={(e) => {
+                setSearchInput(e.target.value);
+                setShowLiveSearch(true);
+              }}
+              placeholder="Buscar por cédula, nombre, tipo o sector..."
+              className={`w-full pl-9 sm:pl-10 pr-8 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm transition-all outline-hidden font-normal ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500 focus:bg-slate-800/90 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500'
+                  : 'bg-slate-100 border-transparent text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500'
+              }`}
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInput('');
+                  setShowLiveSearch(false);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </form>
+
+          {/* Live Search Suggestions Dropdown */}
+          {showLiveSearch && searchInput.trim().length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 overflow-hidden text-xs">
+              <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  {liveResults.length > 0
+                    ? `Resultados para "${searchInput}" (${liveResults.length}):`
+                    : `No hay tickets para "${searchInput}"`}
+                </span>
+                <span className="text-[10px] text-slate-400">Enter para ver todos</span>
+              </div>
+
+              {liveResults.length > 0 ? (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-72 overflow-y-auto">
+                  {liveResults.map((ticket) => {
+                    const reason = getTicketMatchReason(ticket, searchInput);
+                    return (
+                      <div
+                        key={ticket.id}
+                        onClick={() => {
+                          setShowLiveSearch(false);
+                          if (onSelectTicket) {
+                            onSelectTicket(ticket.id);
+                          } else {
+                            onQuickSearch(ticket.numeroRegistro);
+                          }
+                        }}
+                        className="p-3 hover:bg-blue-50/60 dark:hover:bg-slate-800/80 cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                            {ticket.numeroRegistro}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100/70 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-medium">
+                            {reason.label}: {reason.detail}
+                          </span>
+                        </div>
+                        <p className="font-medium text-slate-900 dark:text-slate-100 truncate text-xs">
+                          {ticket.asunto}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          <span className="truncate">👤 {ticket.reportante?.nombre || 'Ciudadano'}</span>
+                          <span>•</span>
+                          <span className="truncate">📍 {ticket.sectorNombre}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div
+                    onClick={() => {
+                      setShowLiveSearch(false);
+                      onQuickSearch(searchInput.trim());
+                    }}
+                    className="p-2.5 bg-blue-50/60 dark:bg-blue-950/40 text-center text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100/80 cursor-pointer transition-colors text-[11px]"
+                  >
+                    Ver búsqueda completa de &quot;{searchInput}&quot; →
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 text-center text-slate-500 dark:text-slate-400">
+                  <p className="text-xs">No se encontraron tickets con este criterio.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Pruebe buscando por cédula (ej: 8-888-1234), nombre, tipo de reporte o sector.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Controls Area */}

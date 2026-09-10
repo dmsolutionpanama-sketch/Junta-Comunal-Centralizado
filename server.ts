@@ -926,16 +926,35 @@ async function startServer() {
       }
 
       if (search && typeof search === 'string' && search.trim() !== '') {
-        const q = search.trim().toLowerCase();
-        filtered = filtered.filter(
-          (t) =>
-            t.numeroRegistro.toLowerCase().includes(q) ||
-            t.asunto.toLowerCase().includes(q) ||
-            t.descripcion.toLowerCase().includes(q) ||
-            t.reportante.nombre.toLowerCase().includes(q) ||
-            t.reportante.cedula.toLowerCase().includes(q) ||
-            t.sectorNombre.toLowerCase().includes(q)
-        );
+        const rawQ = search.trim();
+        const normQ = rawQ.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const cleanQ = rawQ.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+        filtered = filtered.filter((t) => {
+          const numReg = (t.numeroRegistro || '').toLowerCase();
+          const asunto = (t.asunto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const desc = (t.descripcion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const repNombre = (t.reportante?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const rawCedula = (t.reportante?.cedula || '').toLowerCase();
+          const cleanCedula = rawCedula.replace(/[^a-zA-Z0-9]/g, '');
+          const cat = (t.categoriaNombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const sec = (t.sectorNombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+          // Direct or diacritic-free text matches
+          const textMatch =
+            numReg.includes(normQ) ||
+            asunto.includes(normQ) ||
+            desc.includes(normQ) ||
+            repNombre.includes(normQ) ||
+            rawCedula.includes(normQ) ||
+            cat.includes(normQ) ||
+            sec.includes(normQ);
+
+          // Normalized cedula match (e.g. 8-888-1234 matches 88881234)
+          const cedulaMatch = cleanQ.length >= 3 && cleanCedula.includes(cleanQ);
+
+          return textMatch || cedulaMatch;
+        });
       }
 
       // Sorting

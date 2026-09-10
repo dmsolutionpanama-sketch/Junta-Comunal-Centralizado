@@ -61,6 +61,7 @@ const MainAppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<MainNavView>('vista-general');
   const [selectedCategoryDashboard, setSelectedCategoryDashboard] = useState<string | null>(null);
   const [activeTraceTicketId, setActiveTraceTicketId] = useState<string | null>(null);
+  const [quickSearchQuery, setQuickSearchQuery] = useState<string>('TK-2025-001');
   const [categories, setCategories] = useState<Category[]>(CATEGORIAS_SISTEMA);
 
   // Tickets State
@@ -187,6 +188,7 @@ const MainAppContent: React.FC = () => {
 
   // Quick Search Jump
   const handleQuickSearch = (query: string) => {
+    setQuickSearchQuery(query);
     setActiveTraceTicketId(query);
     setCurrentView('busqueda-rapida');
   };
@@ -314,6 +316,8 @@ const MainAppContent: React.FC = () => {
           onForceSync={handleForceSync}
           isSyncing={isSyncing}
           unreadNotificationsCount={tickets.filter((t) => t.estado === 'abierto').length}
+          tickets={tickets}
+          onSelectTicket={handleNavigateToTrace}
         />
 
         {/* Dynamic Page Views */}
@@ -367,7 +371,11 @@ const MainAppContent: React.FC = () => {
 
               {/* 3. Búsqueda y Visualización Pública (Privacy Protected) */}
               {currentView === 'busqueda-rapida' && (
-                <QuickSearchView tickets={tickets} />
+                <QuickSearchView
+                  tickets={tickets}
+                  initialQuery={quickSearchQuery}
+                  onNavigateToTrace={handleNavigateToTrace}
+                />
               )}
 
               {/* 4. Reportes */}

@@ -17,6 +17,7 @@ import {
   Camera,
   RefreshCw,
   Database,
+  Server,
   Menu,
   Tag,
   MapPin,
@@ -35,6 +36,7 @@ interface NavbarProps {
   onToggleDrawer: () => void;
   onOpenCitizenPortal?: () => void;
   onOpenProfileModal?: () => void;
+  onOpenBackendModal?: () => void;
   onForceSync?: () => void;
   isSyncing?: boolean;
   unreadNotificationsCount?: number;
@@ -51,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleDrawer,
   onOpenCitizenPortal,
   onOpenProfileModal,
+  onOpenBackendModal,
   onForceSync,
   isSyncing = false,
   unreadNotificationsCount = 3,
@@ -310,6 +313,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Clock className="w-3.5 h-3.5 text-slate-400" />
           <span className="capitalize">{currentTime}</span>
         </div>
+
+        {/* Dual Backend Access Button */}
+        {onOpenBackendModal && (
+          <button
+            type="button"
+            id="btn-navbar-dual-backend"
+            onClick={onOpenBackendModal}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+              isDarkMode
+                ? 'bg-indigo-950/70 border-indigo-800/80 text-indigo-300 hover:bg-indigo-900/90'
+                : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+            }`}
+            title="Entrar y gestionar los 2 Backends: REST MySQL y WhatsApp n8n"
+          >
+            <Server className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span className="hidden sm:inline">2 Backends</span>
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          </button>
+        )}
 
         {/* Portal Ciudadano shortcut button */}
         {onOpenCitizenPortal && (

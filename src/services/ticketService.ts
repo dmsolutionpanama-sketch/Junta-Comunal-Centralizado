@@ -19,6 +19,7 @@ import {
 import { MOCK_TICKETS, MOCK_CURRENT_USER } from '../data/mockData';
 import { CATEGORIAS_SISTEMA } from '../config/categories';
 import { SECTORES_RESIDENCIA } from '../config/sectors';
+import { getCategoryPrefix } from '../utils/ticketCodeGenerator';
 
 const STORAGE_KEY_TICKETS = 'ticketing_app_tickets_v1';
 const STORAGE_KEY_AUTH = 'ticketing_app_auth_v1';
@@ -353,6 +354,62 @@ export const ticketService = {
     return found;
   },
 
+  // Citizens: Lookup by Cédula
+  async lookupCitizen(cedula: string): Promise<{
+    success: boolean;
+    found: boolean;
+    citizen?: {
+      id: string;
+      nombre: string;
+      apellido: string;
+      nombreCompleto: string;
+      cedula: string;
+      telefono: string;
+      email: string;
+      sector: string;
+      genero: any;
+      edad: number;
+      registradoEnPadron: boolean;
+    };
+  }> {
+    try {
+      const res = await fetch(`/api/citizens/lookup?cedula=${encodeURIComponent(cedula.trim())}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+    } catch (e) {
+      console.warn('Citizen lookup fetch error:', e);
+    }
+    // Fallback: check stored tickets
+    const clean = cedula.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const stored = getStoredTickets();
+    const prev = stored.find(
+      (t) => (t.reportante?.cedula || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === clean
+    );
+    if (prev && prev.reportante) {
+      const rep = prev.reportante;
+      return {
+        success: true,
+        found: true,
+        citizen: {
+          id: `usr-${clean}`,
+          nombre: rep.nombre,
+          apellido: rep.apellido || '',
+          nombreCompleto: rep.apellido ? `${rep.nombre} ${rep.apellido}` : rep.nombre,
+          cedula: rep.cedula,
+          telefono: rep.telefono || '',
+          email: rep.email || '',
+          sector: rep.sector || '',
+          genero: rep.genero,
+          edad: rep.edad,
+          registradoEnPadron: true,
+        },
+      };
+    }
+    return { success: true, found: false };
+  },
+
   // Create Ticket with backend Zod validation response handling
   async createTicket(
     ticketData: CreateTicketInput | Partial<Ticket>
@@ -385,10 +442,15 @@ export const ticketService = {
     } catch (err: any) {
       // Client-side fallback
       const tickets = getStoredTickets();
-      const nextNum = tickets.length + 1;
-      const formattedNum = `TK-${new Date().getFullYear()}-${String(nextNum).padStart(3, '0')}`;
+      const prefix = getCategoryPrefix(ticketData.categoriaNombre, ticketData.categoriaId);
+      const year = new Date().getFullYear();
+      const catCount = tickets.filter(t => t.id.startsWith(`${prefix}-`)).length + 1;
+      const formattedNum = `${prefix}-${year}-${String(catCount).padStart(3, '0')}`;
       const now = new Date();
       const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
+      const consecutivoSeguridad =
+        (ticketData as any).consecutivoSeguridad ||
+        `CS-${year}-${prefix}-${String(Date.now()).slice(-5)}`;
 
       const formattedAdjuntos: Adjunto[] = (ticketData.adjuntos || []).map((a: any, idx: number) => ({
         id: a.id || `att-${Date.now()}-${idx}`,
@@ -399,9 +461,20 @@ export const ticketService = {
         fechaSubida: nowStr,
       }));
 
+      const rep = ticketData.reportante || {
+        nombre: 'Ciudadano Solicitante',
+        apellido: '',
+        cedula: '8-000-000',
+        genero: 'femenino',
+        edad: 35,
+        sector: ticketData.sectorNombre || 'Altos de Las Cumbres',
+      };
+
       const newTicket: Ticket = {
         id: formattedNum,
         numeroRegistro: formattedNum,
+        consecutivoSeguridad,
+        tipoReporte: ticketData.tipoReporte || ticketData.categoriaNombre || 'Alumbrado Eléctrico',
         asunto: ticketData.asunto || 'Sin asunto',
         descripcion: ticketData.descripcion || '',
         categoriaId: ticketData.categoriaId || 'alumbrado-electrico',
@@ -413,15 +486,23 @@ export const ticketService = {
         ubicacionLat: ticketData.ubicacionLat || 9.0834,
         ubicacionLng: ticketData.ubicacionLng || -79.5312,
         direccionDetallada: ticketData.direccionDetallada || '',
+        lugarRegistro: 'Portal Web Ciudadano',
+        canalIntake: 'Formulario Digital Especializado',
+        canalRadicacion: 'web_portal',
         fechaCreacion: now.toISOString().split('T')[0],
         horaCreacion: now.toTimeString().split(' ')[0],
         fechaActualizacion: nowStr,
-        reportante: ticketData.reportante || {
-          nombre: 'Ciudadano Solicitante',
-          cedula: '8-000-000',
-          genero: 'femenino',
-          edad: 35,
-          sector: ticketData.sectorNombre || 'Altos de Las Cumbres',
+        funcionarioRegistro: (ticketData as any).creadoPor || 'Sistema Web (Ciudadano)',
+        reportante: {
+          nombre: rep.nombre,
+          apellido: rep.apellido || '',
+          cedula: rep.cedula,
+          telefono: rep.telefono || '',
+          email: rep.email || '',
+          genero: rep.genero || 'otro',
+          edad: rep.edad || 35,
+          sector: ticketData.sectorNombre || rep.sector || 'Altos de Las Cumbres',
+          registradoEnPadron: true,
         },
         adjuntos: formattedAdjuntos,
         trazabilidad: [
@@ -430,17 +511,20 @@ export const ticketService = {
             ticketId: formattedNum,
             tipoEvento: 'creacion',
             fechaHora: nowStr,
-            responsable: 'Sistema Web (Ciudadano)',
+            responsable: (ticketData as any).creadoPor || 'Sistema Web (Ciudadano)',
             rolResponsable: 'Portal Ciudadano',
-            nota: 'Ticket radicado en el sistema.',
+            nota: `[Consecutivo de Seguridad: ${consecutivoSeguridad}] Reporte de ${ticketData.categoriaNombre || 'Alumbrado Eléctrico'} radicado por ${rep.nombre} ${rep.apellido || ''} (Cédula: ${rep.cedula}). Auditoría anti-borrado registrada.`,
             estadoNuevo: 'abierto',
+            canalInteraccion: 'web',
+            minutosConsumidos: 2,
           },
         ],
+        datosEspecificosReporte: (ticketData as any).datosEspecificosReporte,
       };
 
       tickets.unshift(newTicket);
       saveStoredTickets(tickets);
-      return { success: true, data: newTicket, message: 'Ticket generado exitosamente.' };
+      return { success: true, data: newTicket, message: `Ticket ${formattedNum} generado exitosamente.` };
     }
   },
 

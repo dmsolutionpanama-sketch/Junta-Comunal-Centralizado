@@ -91,7 +91,7 @@ export function getDbStatus() {
 }
 
 // Fallback coordinate centers for sectors in Ernesto Córdoba Campos / Panamá Norte
-const SECTOR_COORDS_MAP: Record<string, { lat: number; lng: number }> = {
+export const SECTOR_COORDS_MAP: Record<string, { lat: number; lng: number }> = {
   'Altos de Las Cumbres': { lat: 9.0834, lng: -79.5312 },
   'Nueva Libia': { lat: 9.0945, lng: -79.5241 },
   'Villa Zaita': { lat: 9.0712, lng: -79.5188 },
@@ -117,13 +117,18 @@ export async function ensureDatabaseTablesSchema(): Promise<boolean> {
     const db = await getDbPool();
     if (!db) return false;
 
-    // Ensure columns exist on tickets table without crashing if they already do
+    // Ensure columns exist on tickets and reportantes tables without crashing if they already do
     const alterQueries = [
       "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ubicacion_lat DECIMAL(10, 7) NULL;",
       "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ubicacion_lng DECIMAL(10, 7) NULL;",
       "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS canal_intake VARCHAR(100) DEFAULT 'Portal Web Ciudadano';",
       "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS canal_radicacion VARCHAR(50) DEFAULT 'web_portal';",
-      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS lugar_registro VARCHAR(100) DEFAULT 'Plataforma Web';"
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS lugar_registro VARCHAR(100) DEFAULT 'Plataforma Web';",
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS consecutivo_seguridad VARCHAR(100) NULL;",
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS tipo_reporte VARCHAR(100) NULL;",
+      "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS datos_especificos_reporte JSON NULL;",
+      "ALTER TABLE reportantes ADD COLUMN IF NOT EXISTS apellido VARCHAR(150) NULL;",
+      "ALTER TABLE reportantes ADD COLUMN IF NOT EXISTS registrado_padron TINYINT(1) DEFAULT 0;"
     ];
 
     for (const q of alterQueries) {
@@ -153,6 +158,8 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
       SELECT 
         t.id, 
         t.numero_registro as numeroRegistro, 
+        t.consecutivo_seguridad as consecutivoSeguridad,
+        t.tipo_reporte as tipoReporte,
         t.asunto, 
         t.categoria_id as categoriaId, 
         t.descripcion, 
@@ -170,12 +177,14 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
         t.fecha_actualizacion as fechaActualizacion,
         t.asignado_a as asignadoA,
         r.nombre as rep_nombre,
+        r.apellido as rep_apellido,
         r.cedula as rep_cedula,
         r.telefono as rep_telefono,
         r.email as rep_email,
         r.genero as rep_genero,
         r.edad as rep_edad,
-        r.sector as rep_sector
+        r.sector as rep_sector,
+        r.registrado_padron as rep_registrado_padron
       FROM tickets t
       LEFT JOIN reportantes r ON t.id = r.ticket_id
       ORDER BY t.fecha_actualizacion DESC
@@ -208,6 +217,8 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
       return {
         id: String(row.id || row.numeroRegistro),
         numeroRegistro: row.numeroRegistro || `TK-${row.id}`,
+        consecutivoSeguridad: row.consecutivoSeguridad || undefined,
+        tipoReporte: row.tipoReporte || undefined,
         asunto: row.asunto || 'Incidencia comunal registrada',
         categoriaId: row.categoriaId || 'general',
         categoriaNombre: row.categoriaId || 'General',
@@ -227,12 +238,14 @@ export async function queryTicketsFromMySQL(): Promise<Ticket[] | null> {
         fechaActualizacion: row.fechaActualizacion ? String(row.fechaActualizacion) : '2026-08-29 12:00:00',
         reportante: {
           nombre: row.rep_nombre || (isWpp ? 'Ciudadano WhatsApp' : 'Ciudadano Residente'),
+          apellido: row.rep_apellido || '',
           cedula: row.rep_cedula || (isWpp ? '8-WhatsApp' : 'N/A'),
           telefono: row.rep_telefono || '',
           email: row.rep_email || (isWpp ? 'contacto@whatsapp.comunal' : ''),
           genero: row.rep_genero || 'otro',
           edad: Number(row.rep_edad) || 35,
           sector: sectorStr,
+          registradoEnPadron: row.rep_registrado_padron === 1,
         },
         adjuntos: [],
         trazabilidad: [

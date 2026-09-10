@@ -149,6 +149,21 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
   const [modalDetailTicket, setModalDetailTicket] = useState<Ticket | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
+  // 2 Versions Switcher: Versión 1 Minimalista Inmersiva vs Versión 2 Analítica Territorial
+  const [mapDesignVersion, setMapDesignVersion] = useState<'v1_minimal' | 'v2_analytics'>(() => {
+    return (localStorage.getItem('admin_map_design_version') as 'v1_minimal' | 'v2_analytics') || 'v1_minimal';
+  });
+
+  // Re-render Leaflet container whenever layout version changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [mapDesignVersion, isSidebarOpen]);
+
   // Map container and Leaflet instances refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -766,35 +781,74 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
   };
 
   return (
-    <div id="admin-reports-map-container" className="space-y-4 max-w-7xl mx-auto pb-12 animate-in fade-in duration-200">
-      {/* Top Banner & Control Header */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-        {/* Title & View Switcher */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div id="admin-reports-map-container" className="space-y-3 w-full px-2 sm:px-4 pb-12 animate-in fade-in duration-200">
+      {/* Top Banner & Control Header - Minimal Text */}
+      <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+        {/* Title, 2 Versions Switcher & Mode Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/70 border border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400">
                 <MapIcon className="w-5 h-5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
                     Mapa de Incidencias & Frecuencia Territorial
                   </h1>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300">
                     Ernesto Córdoba Campos
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Visualización de focos de incidencia, recurrencia por área y tasa de efectividad de respuesta.
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {mapDesignVersion === 'v1_minimal'
+                    ? 'Versión 1: Vista Inmersiva Full Width con controles flotantes y mínima carga textual.'
+                    : 'Versión 2: Vista Analítica Territorial con panel lateral de frecuencia y recurrencia.'}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Mode Switcher Segmented Control */}
+          {/* Mode Switcher & 2 Versions Switcher */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+            {/* Version Switcher: Versión 1 Minimalista vs Versión 2 Analítica */}
+            <div className="flex items-center bg-purple-50/70 dark:bg-purple-950/40 p-1 rounded-xl border border-purple-200 dark:border-purple-800/80">
+              <button
+                type="button"
+                id="btn-map-version-v1"
+                onClick={() => {
+                  setMapDesignVersion('v1_minimal');
+                  localStorage.setItem('admin_map_design_version', 'v1_minimal');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  mapDesignVersion === 'v1_minimal'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50'
+                }`}
+                title="Versión 1: Minimalista Inmersivo a Pantalla Completa"
+              >
+                <span>🗺️ V1: Minimalista</span>
+              </button>
+              <button
+                type="button"
+                id="btn-map-version-v2"
+                onClick={() => {
+                  setMapDesignVersion('v2_analytics');
+                  localStorage.setItem('admin_map_design_version', 'v2_analytics');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  mapDesignVersion === 'v2_analytics'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50'
+                }`}
+                title="Versión 2: Analítica Territorial con Panel de Sectores"
+              >
+                <span>📊 V2: Analítica Territorial</span>
+              </button>
+            </div>
+
+            {/* Mode Switcher Segmented Control */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
                 id="btn-mode-markers"
@@ -843,7 +897,7 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
               <button
                 type="button"
                 onClick={onNavigateToDirectory}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer shadow-xs transition-all"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer shadow-sm transition-all"
                 title="Abrir Directorio Ciudadano para llamadas y WhatsApp"
               >
                 <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />
@@ -1054,10 +1108,37 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
       {/* Main Map Stage & Side Inspector Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Map Container Canvas */}
-        <div className={`transition-all duration-300 ${isSidebarOpen ? 'lg:col-span-8 xl:col-span-8' : 'lg:col-span-12'}`}>
-          <div className="relative w-full aspect-square min-h-[640px] max-h-[880px] h-[740px] xl:h-[800px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md bg-slate-100 dark:bg-slate-900">
+        <div className={`transition-all duration-300 ${
+          mapDesignVersion === 'v1_minimal'
+            ? 'lg:col-span-12'
+            : isSidebarOpen
+            ? 'lg:col-span-7 xl:col-span-8'
+            : 'lg:col-span-12'
+        }`}>
+          <div className={`relative w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md bg-slate-100 dark:bg-slate-900 ${
+            mapDesignVersion === 'v1_minimal' ? 'h-[78vh] min-h-[620px]' : 'aspect-square min-h-[640px] max-h-[880px] h-[740px] xl:h-[800px]'
+          }`}>
             {/* The Actual Leaflet Map Div */}
             <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+            {/* V1 Minimalist Floating Stats HUD */}
+            {mapDesignVersion === 'v1_minimal' && (
+              <div className="absolute top-3 right-3 bg-slate-900/90 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/80 text-white shadow-lg text-[11px] flex items-center gap-3 z-10 pointer-events-auto">
+                <span className="flex items-center gap-1 font-semibold text-purple-300">
+                  <MapPin className="w-3.5 h-3.5 text-purple-400" />
+                  {filteredTickets.length} Incidencias
+                </span>
+                <span className="text-slate-500">|</span>
+                <span className="flex items-center gap-1 font-semibold text-emerald-300">
+                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                  {metrics.globalEffectivenessPct}% Efectividad
+                </span>
+                <span className="text-slate-500">|</span>
+                <span className="text-slate-300 text-[10px]">
+                  Modo: {mapViewMode === 'markers' ? 'Marcadores' : mapViewMode === 'heatmap' ? 'Calor' : 'Efectividad'}
+                </span>
+              </div>
+            )}
 
             {/* Map Legend Overlay for Markers or Heatmap */}
             <div className="absolute top-3 left-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg text-xs space-y-2 z-10 max-w-xs pointer-events-auto">
@@ -1198,8 +1279,8 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
           </div>
         </div>
 
-        {/* Side Incident List & Quick Inspection Panel */}
-        {isSidebarOpen && (
+        {/* Side Incident List & Quick Inspection Panel (Only in Versión 2) */}
+        {mapDesignVersion === 'v2_analytics' && isSidebarOpen && (
           <div className="lg:col-span-4 xl:col-span-4 space-y-4">
             {/* Sector Recurrence Ranking Card */}
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
@@ -1337,8 +1418,8 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
         )}
       </div>
 
-      {/* Response Effectiveness & Recurrence Detailed Matrix (Bottom Panel) */}
-      {mapViewMode === 'effectiveness' && (
+      {/* Response Effectiveness & Recurrence Detailed Matrix (Bottom Panel in Versión 2) */}
+      {mapDesignVersion === 'v2_analytics' && mapViewMode === 'effectiveness' && (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4 animate-in fade-in duration-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>

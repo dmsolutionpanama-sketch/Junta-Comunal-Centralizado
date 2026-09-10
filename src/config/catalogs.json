@@ -12,7 +12,7 @@
     },
     {
       "id": "danos-agua",
-      "nombre": "Daños Agua",
+      "nombre": "Daños de Agua",
       "prefijo": "AGU",
       "descripcion": "Fugas de agua potable, tuberías rotas, falta de presión o alcantarillado",
       "color": "#0284C7",
@@ -22,7 +22,7 @@
     },
     {
       "id": "corte-arboles-poda",
-      "nombre": "Corte de Árboles o Poda",
+      "nombre": "Corte de Arboles o Poda",
       "prefijo": "POD",
       "descripcion": "Riesgo de ramas sobre tendido eléctrico, vías públicas o áreas comunales",
       "color": "#16A34A",
@@ -41,8 +41,8 @@
       "activa": true
     },
     {
-      "id": "certificaciones-permisos",
-      "nombre": "Certificaciones y Permisos",
+      "id": "certificados-permisos",
+      "nombre": "Certificados y permisos",
       "prefijo": "CER",
       "descripcion": "Trámites de uso de suelo, permisos municipales, certificaciones de residencia",
       "color": "#9333EA",
@@ -51,8 +51,8 @@
       "activa": true
     },
     {
-      "id": "permisos-ligas-deportivas",
-      "nombre": "Permisos para Ligas Deportivas",
+      "id": "permisos-liga-deportiva",
+      "nombre": "Permisos para liga deportiva",
       "prefijo": "DEP",
       "descripcion": "Uso de canchas comunales, torneos deportivos barriales y actividades recreativas",
       "color": "#0D9488",

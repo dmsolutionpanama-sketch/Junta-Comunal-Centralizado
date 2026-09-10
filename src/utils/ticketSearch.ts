@@ -50,21 +50,29 @@ export function matchesTicketSearch(ticket: Ticket, rawQuery: string): boolean {
 
   // 2. Match by Nombre o Apellido
   const ticketNombreNorm = normalizeText(ticket.reportante?.nombre);
-  if (ticketNombreNorm) {
-    if (ticketNombreNorm.includes(qNorm)) return true;
-    // Multi-word search: every word in query must appear in the name
-    const queryWords = qNorm.split(/\s+/).filter(Boolean);
-    if (queryWords.length > 1 && queryWords.every((word) => ticketNombreNorm.includes(word))) {
-      return true;
-    }
+  const ticketApellidoNorm = normalizeText(ticket.reportante?.apellido);
+  const ticketNombreCompletoNorm = normalizeText(
+    `${ticket.reportante?.nombre || ''} ${ticket.reportante?.apellido || ''}`
+  );
+
+  if (ticketNombreNorm && ticketNombreNorm.includes(qNorm)) return true;
+  if (ticketApellidoNorm && ticketApellidoNorm.includes(qNorm)) return true;
+  if (ticketNombreCompletoNorm && ticketNombreCompletoNorm.includes(qNorm)) return true;
+
+  // Multi-word search: every word in query must appear in full name
+  const queryWords = qNorm.split(/\s+/).filter(Boolean);
+  if (queryWords.length > 1 && queryWords.every((word) => ticketNombreCompletoNorm.includes(word))) {
+    return true;
   }
 
-  // 3. Match by Tipo de Reporte (Categoría, Asunto, Descripción)
+  // 3. Match by Tipo de Reporte (tipoReporte, Categoría, Asunto, Descripción)
+  const tipoReporteNorm = normalizeText(ticket.tipoReporte);
   const catNombreNorm = normalizeText(ticket.categoriaNombre);
   const catIdNorm = normalizeText(ticket.categoriaId);
   const asuntoNorm = normalizeText(ticket.asunto);
   const descNorm = normalizeText(ticket.descripcion);
 
+  if (tipoReporteNorm && tipoReporteNorm.includes(qNorm)) return true;
   if (catNombreNorm && catNombreNorm.includes(qNorm)) return true;
   if (catIdNorm && catIdNorm.includes(qNorm)) return true;
   if (asuntoNorm && asuntoNorm.includes(qNorm)) return true;
@@ -81,11 +89,13 @@ export function matchesTicketSearch(ticket: Ticket, rawQuery: string): boolean {
   if (repSectorNorm && repSectorNorm.includes(qNorm)) return true;
   if (direccionNorm && direccionNorm.includes(qNorm)) return true;
 
-  // 5. Match by Número de Registro / ID
+  // 5. Match by Consecutivo de Seguridad y Número de Registro / ID
+  const consecutivoNorm = normalizeText(ticket.consecutivoSeguridad);
   const numRegNorm = normalizeText(ticket.numeroRegistro);
   const idNorm = normalizeText(ticket.id);
   const numClean = normalizeCedula(ticket.numeroRegistro);
 
+  if (consecutivoNorm && consecutivoNorm.includes(qNorm)) return true;
   if (numRegNorm && numRegNorm.includes(qNorm)) return true;
   if (idNorm && idNorm.includes(qNorm)) return true;
   if (qCedula.length >= 3 && numClean && numClean.includes(qCedula)) return true;
@@ -125,6 +135,16 @@ export function getTicketMatchReason(ticket: Ticket, rawQuery: string): { label:
     return { label: 'Nombre', detail: ticket.reportante.nombre };
   }
 
+  const ticketApellidoNorm = normalizeText(ticket.reportante?.apellido);
+  if (ticketApellidoNorm && ticketApellidoNorm.includes(qNorm)) {
+    return { label: 'Apellido', detail: ticket.reportante?.apellido || '' };
+  }
+
+  const tipoReporteNorm = normalizeText(ticket.tipoReporte);
+  if (tipoReporteNorm && tipoReporteNorm.includes(qNorm)) {
+    return { label: 'Tipo de Reporte', detail: ticket.tipoReporte || '' };
+  }
+
   const catNombreNorm = normalizeText(ticket.categoriaNombre);
   if (catNombreNorm && catNombreNorm.includes(qNorm)) {
     return { label: 'Tipo de Reporte', detail: ticket.categoriaNombre };
@@ -133,6 +153,11 @@ export function getTicketMatchReason(ticket: Ticket, rawQuery: string): { label:
   const sectorNombreNorm = normalizeText(ticket.sectorNombre);
   if (sectorNombreNorm && sectorNombreNorm.includes(qNorm)) {
     return { label: 'Sector Residencial', detail: ticket.sectorNombre };
+  }
+
+  const consecutivoNorm = normalizeText(ticket.consecutivoSeguridad);
+  if (consecutivoNorm && consecutivoNorm.includes(qNorm)) {
+    return { label: 'Consecutivo Seguridad', detail: ticket.consecutivoSeguridad || '' };
   }
 
   const numRegNorm = normalizeText(ticket.numeroRegistro);

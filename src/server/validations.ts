@@ -18,6 +18,7 @@ export const reportanteSchema = z.object({
     .min(1, 'El nombre del reportante es obligatorio.')
     .min(2, 'El nombre del reportante debe tener al menos 2 caracteres.')
     .max(120, 'El nombre no puede exceder 120 caracteres.'),
+  apellido: z.string().optional().default(''),
   cedula: z
     .string()
     .min(1, 'La cédula del reportante es obligatoria.')
@@ -29,12 +30,15 @@ export const reportanteSchema = z.object({
     .email('El correo electrónico del reportante no es válido.')
     .optional()
     .or(z.literal('')),
-  genero: z.enum(['femenino', 'masculino', 'otro']),
+  genero: z.enum(['femenino', 'masculino', 'otro']).optional().default('otro'),
   edad: z.coerce
     .number()
     .min(1, 'La edad debe ser mayor a 0 años.')
-    .max(120, 'La edad debe ser menor a 120 años.'),
+    .max(120, 'La edad debe ser menor a 120 años.')
+    .optional()
+    .default(35),
   sector: z.string().optional().default(''),
+  registradoEnPadron: z.boolean().optional().default(false),
 });
 
 export const adjuntoSchema = z.object({
@@ -56,12 +60,13 @@ export const createTicketSchema = z.object({
   descripcion: z
     .string()
     .min(1, 'La descripción del caso es obligatoria.')
-    .min(10, 'La descripción debe tener al menos 10 caracteres para mayor detalle.')
+    .min(5, 'La descripción debe tener al menos 5 caracteres para mayor detalle.')
     .max(3000, 'La descripción no puede superar 3000 caracteres.'),
   categoriaId: z
     .string()
     .min(1, 'Debe seleccionar una categoría válida.'),
   categoriaNombre: z.string().optional(),
+  tipoReporte: z.string().optional(),
   sectorNombre: z
     .string()
     .min(1, 'Debe seleccionar un sector de residencia válido.'),
@@ -69,9 +74,11 @@ export const createTicketSchema = z.object({
   direccionDetallada: z.string().optional().default(''),
   ubicacionLat: z.coerce.number().optional().default(9.082),
   ubicacionLng: z.coerce.number().optional().default(-79.528),
+  consecutivoSeguridad: z.string().optional(),
   reportante: reportanteSchema,
   adjuntos: z.array(adjuntoSchema).optional().default([]),
   creadoPor: z.string().optional(),
+  datosEspecificosReporte: z.record(z.string(), z.any()).optional(),
 });
 
 export const updateTicketSchema = z.object({

@@ -19,6 +19,7 @@ import { CustomizationSettingsView } from './components/config/CustomizationSett
 import { AdminMaintenanceView } from './components/admin/AdminMaintenanceView';
 import { NewTicketModal } from './components/tickets/NewTicketModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
+import { BackendSwitcherModal } from './components/layout/BackendSwitcherModal';
 import { CATEGORIAS_SISTEMA } from './config/categories';
 import { analytics } from './services/analytics';
 import { LayoutList, Map, PhoneCall, Search, Menu as MenuIcon, LayoutDashboard, Plus } from 'lucide-react';
@@ -73,6 +74,7 @@ const MainAppContent: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
+  const [isBackendModalOpen, setIsBackendModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Initial Data Load & Event Listener
@@ -260,18 +262,25 @@ const MainAppContent: React.FC = () => {
   // 1. CITIZEN PUBLIC VIEW (INDEX VIEW)
   if (activeScreen === 'citizen-index') {
     return (
-      <CitizenIndexView
-        tickets={tickets}
-        onGoToLogin={() => {
-          if (currentUser) {
-            setActiveScreen('staff-portal');
-          } else {
-            setActiveScreen('login');
-          }
-        }}
-        onOpenNewTicketModal={() => setIsNewTicketModalOpen(true)}
-        onCreateTicketDirect={handleCreateTicket}
-      />
+      <>
+        <CitizenIndexView
+          tickets={tickets}
+          onGoToLogin={() => {
+            if (currentUser) {
+              setActiveScreen('staff-portal');
+            } else {
+              setActiveScreen('login');
+            }
+          }}
+          onOpenNewTicketModal={() => setIsNewTicketModalOpen(true)}
+          onCreateTicketDirect={handleCreateTicket}
+        />
+        <NewTicketModal
+          isOpen={isNewTicketModalOpen}
+          onClose={() => setIsNewTicketModalOpen(false)}
+          onSubmitTicket={handleCreateTicket}
+        />
+      </>
     );
   }
 
@@ -300,6 +309,7 @@ const MainAppContent: React.FC = () => {
         onNavigate={handleNavigate}
         openNewTicketModal={() => setIsNewTicketModalOpen(true)}
         onOpenCitizenPortal={() => setActiveScreen('citizen-index')}
+        onOpenBackendModal={() => setIsBackendModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -313,6 +323,7 @@ const MainAppContent: React.FC = () => {
           onToggleDrawer={() => setIsDrawerOpen(true)}
           onOpenCitizenPortal={() => setActiveScreen('citizen-index')}
           onOpenProfileModal={() => setIsUserProfileModalOpen(true)}
+          onOpenBackendModal={() => setIsBackendModalOpen(true)}
           onForceSync={handleForceSync}
           isSyncing={isSyncing}
           unreadNotificationsCount={tickets.filter((t) => t.estado === 'abierto').length}
@@ -464,6 +475,15 @@ const MainAppContent: React.FC = () => {
         }}
         onOpenNewTicket={() => setIsNewTicketModalOpen(true)}
         onNavigateToTrace={handleNavigateToTrace}
+      />
+
+      {/* Dual Backend Switcher Modal */}
+      <BackendSwitcherModal
+        isOpen={isBackendModalOpen}
+        onClose={() => setIsBackendModalOpen(false)}
+        onTicketsUpdated={() => {
+          handleForceSync();
+        }}
       />
 
       {/* New Ticket Modal */}

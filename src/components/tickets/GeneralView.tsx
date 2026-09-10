@@ -22,6 +22,7 @@ import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { SECTORES_RESIDENCIA } from '../../config/sectors';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { TicketModalDetail } from './TicketModalDetail';
+import { matchesTicketSearch } from '../../utils/ticketSearch';
 
 interface GeneralViewProps {
   tickets: Ticket[];
@@ -98,16 +99,7 @@ export const GeneralView: React.FC<GeneralViewProps> = ({
 
     // Search
     if (searchTerm.trim()) {
-      const q = searchTerm.trim().toLowerCase();
-      result = result.filter(
-        (t) =>
-          t.numeroRegistro.toLowerCase().includes(q) ||
-          t.asunto.toLowerCase().includes(q) ||
-          t.descripcion.toLowerCase().includes(q) ||
-          t.reportante.nombre.toLowerCase().includes(q) ||
-          t.reportante.cedula.toLowerCase().includes(q) ||
-          t.sectorNombre.toLowerCase().includes(q)
-      );
+      result = result.filter((t) => matchesTicketSearch(t, searchTerm));
     }
 
     // Category
@@ -315,7 +307,7 @@ export const GeneralView: React.FC<GeneralViewProps> = ({
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Buscar por # ticket, nombre, cédula o descripción..."
+              placeholder="Buscar por cédula, nombre o apellido, tipo de reporte o sector..."
               className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>

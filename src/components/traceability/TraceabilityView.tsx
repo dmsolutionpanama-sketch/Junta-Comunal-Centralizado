@@ -36,6 +36,7 @@ import { GoogleMapLocationPicker } from '../common/GoogleMapLocationPicker';
 import { emailService } from '../../services/emailService';
 import { analytics } from '../../services/analytics';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
+import { matchesTicketSearch, getTicketMatchReason } from '../../utils/ticketSearch';
 
 interface TraceabilityViewProps {
   tickets: Ticket[];
@@ -164,25 +165,44 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
     }
   }, [initialTicketId]);
 
+  // Dynamic ticket search with full support for cédula, nombre, apellido, tipo de reporte and sector
+  const matchedTickets = useMemo(() => {
+    if (!searchQuery || !searchQuery.trim()) return [];
+    return tickets.filter((t) => matchesTicketSearch(t, searchQuery));
+  }, [searchQuery, tickets]);
+
   useEffect(() => {
-    if (!searchQuery) return;
+    if (!searchQuery || !searchQuery.trim()) return;
     const cleanQ = searchQuery.trim().toLowerCase();
-    const found = tickets.find(
-      (t) =>
-        t.numeroRegistro.toLowerCase() === cleanQ ||
-        t.id.toLowerCase() === cleanQ ||
-        t.asunto.toLowerCase().includes(cleanQ)
+
+    // 1. Exact match by registration number or ID
+    const exactMatch = tickets.find(
+      (t) => t.numeroRegistro.toLowerCase() === cleanQ || t.id.toLowerCase() === cleanQ
     );
-    if (found) {
-      setCurrentTicket(found);
+
+    if (exactMatch) {
+      setCurrentTicket(exactMatch);
+      setErrorMessage(null);
+      analytics.trackTicketSearched(searchQuery, true);
+      return;
+    }
+
+    // 2. Comprehensive match by cédula, nombre, apellido, tipo de reporte, o sector
+    if (matchedTickets.length > 0) {
+      // Keep current ticket if it's among matches, otherwise select first match
+      if (!currentTicket || !matchedTickets.some((t) => t.id === currentTicket.id)) {
+        setCurrentTicket(matchedTickets[0]);
+      }
       setErrorMessage(null);
       analytics.trackTicketSearched(searchQuery, true);
     } else {
       setCurrentTicket(null);
-      setErrorMessage(`No se encontró ningún ticket con el número de radicado "${searchQuery}".`);
+      setErrorMessage(
+        `No se encontró ningún ticket para "${searchQuery}". Puede buscar por cédula, nombre o apellido, tipo de reporte, sector o radicado.`
+      );
       analytics.trackTicketSearched(searchQuery, false);
     }
-  }, [searchQuery, tickets]);
+  }, [searchQuery, tickets, matchedTickets]);
 
   // Category SLA hours
   const categorySlaHours = useMemo(() => {
@@ -369,18 +389,15 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
     e.preventDefault();
     if (!searchQuery.trim()) return;
     const cleanQ = searchQuery.trim().toLowerCase();
-    const found = tickets.find(
-      (t) =>
-        t.numeroRegistro.toLowerCase() === cleanQ ||
-        t.id.toLowerCase() === cleanQ ||
-        t.asunto.toLowerCase().includes(cleanQ)
-    );
+    const found =
+      tickets.find((t) => t.numeroRegistro.toLowerCase() === cleanQ || t.id.toLowerCase() === cleanQ) ||
+      tickets.find((t) => matchesTicketSearch(t, searchQuery));
     if (found) {
       setCurrentTicket(found);
       setErrorMessage(null);
     } else {
       setCurrentTicket(null);
-      setErrorMessage(`No se encontró ningún ticket con el número de radicado "${searchQuery}".`);
+      setErrorMessage(`No se encontró ningún ticket para "${searchQuery}". Puede buscar por cédula, nombre o apellido, tipo de reporte o sector.`);
     }
   };
 
@@ -521,7 +538,7 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
               id="traceability-search-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por radicado (ej: ALU-2025-001, AGU-2025-002, POD-2025-003)..."
+              placeholder="Buscar por cédula, nombre o apellido, tipo de reporte, sector o radicado..."
               className="w-full pl-10 pr-24 py-2.5 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20 text-slate-900 dark:text-slate-100 font-medium"
             />
             <button
@@ -548,6 +565,40 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({
             </select>
           </div>
         </div>
+
+        {/* If multiple tickets match the search query, show convenient selection chips */}
+        {searchQuery.trim().length > 0 && matchedTickets.length > 1 && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                Coincidencias encontradas ({matchedTickets.length}):
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {matchedTickets.slice(0, 6).map((t) => {
+                const isSelected = currentTicket?.id === t.id;
+                const reason = getTicketMatchReason(t, searchQuery);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setCurrentTicket(t)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <span className="font-bold">{t.numeroRegistro}</span>
+                    <span className="text-[11px] opacity-80">
+                      • {t.reportante?.nombre || 'Ciudadano'} ({reason.label}: {reason.detail})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Error if not found */}

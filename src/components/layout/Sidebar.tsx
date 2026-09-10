@@ -21,6 +21,7 @@ import {
   PhoneCall,
   MessageSquare,
   Sliders,
+  Server,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
@@ -45,6 +46,7 @@ interface SidebarProps {
   onNavigate: (view: MainNavView, categoryId?: string | null) => void;
   openNewTicketModal: () => void;
   onOpenCitizenPortal?: () => void;
+  onOpenBackendModal?: () => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
@@ -55,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onNavigate,
   onOpenCitizenPortal,
+  onOpenBackendModal,
   isMobileOpen = false,
   onCloseMobile,
 }) => {
@@ -343,6 +346,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
           <span className="truncate">Configuración</span>
         </button>
+
+        {/* Conexión 2 Backends */}
+        {onOpenBackendModal && (
+          <button
+            type="button"
+            id="nav-dos-backends"
+            onClick={() => {
+              onOpenBackendModal();
+              if (onCloseMobile) onCloseMobile();
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-semibold"
+          >
+            <div className="flex items-center gap-3 truncate">
+              <Server className="w-4.5 h-4.5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+              <span className="truncate">2 Backends Activos</span>
+            </div>
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          </button>
+        )}
 
         {/* REGLA FIJA: DASHBOARD SIEMPRE COMO ÚLTIMA OPCIÓN */}
         <div className="pt-4 mt-2">

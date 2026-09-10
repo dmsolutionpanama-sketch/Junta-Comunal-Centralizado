@@ -21,12 +21,14 @@ export interface Category {
 
 export interface Reportante {
   nombre: string;
+  apellido?: string;
   cedula: string;
   telefono?: string;
   email?: string;
   genero: UserGender;
   edad: number;
   sector: string;
+  registradoEnPadron?: boolean;
 }
 
 export interface Adjunto {
@@ -57,8 +59,10 @@ export interface TrazabilidadEvento {
 }
 
 export interface Ticket {
-  id: string; // e.g. "TK-2026-001"
+  id: string; // e.g. "ALU-2026-001" or "TK-2026-001"
   numeroRegistro: string;
+  consecutivoSeguridad?: string; // Inviolable monotonic audit counter e.g. "CS-2026-ALU-00001"
+  tipoReporte?: string; // e.g. "Alumbrado Eléctrico"
   asunto: string;
   descripcion: string;
   categoriaId: string;
@@ -81,6 +85,8 @@ export interface Ticket {
   trazabilidad: TrazabilidadEvento[];
   asignadoA?: string;
   departamento?: string;
+  funcionarioRegistro?: string;
+  datosEspecificosReporte?: Record<string, any>;
 }
 
 export type UserRole =
@@ -300,19 +306,23 @@ export interface CreateTicketInput {
   descripcion: string;
   categoriaId: string;
   categoriaNombre: string;
+  tipoReporte?: string;
   sectorNombre: string;
   prioridad: TicketPriority;
   direccionDetallada?: string;
   ubicacionLat?: number;
   ubicacionLng?: number;
+  consecutivoSeguridad?: string;
   reportante: {
     nombre: string;
+    apellido?: string;
     cedula: string;
     telefono?: string;
     email?: string;
     genero: UserGender;
     edad: number;
     sector: string;
+    registradoEnPadron?: boolean;
   };
   adjuntos?: Array<{
     id: string;
@@ -320,4 +330,6 @@ export interface CreateTicketInput {
     tipo: AttachmentType;
     url: string;
   }>;
+  creadoPor?: string;
+  datosEspecificosReporte?: Record<string, any>;
 }

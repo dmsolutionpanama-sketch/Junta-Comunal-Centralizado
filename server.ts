@@ -18,9 +18,18 @@ import {
   optionalAuth,
   AuthenticatedRequest,
 } from './src/server/auth';
-import { getDbPool, getDbStatus, queryTicketsFromMySQL, getSystemConfigFromMySQL, saveSystemConfigToMySQL } from './src/server/db';
+import {
+  getDbPool,
+  getDbStatus,
+  queryTicketsFromMySQL,
+  getSystemConfigFromMySQL,
+  saveSystemConfigToMySQL,
+  ensureDatabaseTablesSchema,
+  SECTOR_COORDS_MAP,
+} from './src/server/db';
 import { DEFAULT_SYSTEM_THEME } from './src/config/defaultTheme';
 import { SystemCustomTheme } from './src/types';
+import { getCategoryPrefix } from './src/utils/ticketCodeGenerator';
 
 // Centralized master data loaded from catalogs.json
 let systemCategories = [...catalogsData.categorias];
@@ -30,6 +39,9 @@ let systemSectors = [...catalogsData.sectores];
 let ticketsDb: Ticket[] = JSON.parse(JSON.stringify(MOCK_TICKETS));
 let usersDb: User[] = JSON.parse(JSON.stringify(MOCK_SYSTEM_USERS));
 let systemCustomTheme: SystemCustomTheme = JSON.parse(JSON.stringify(DEFAULT_SYSTEM_THEME));
+
+// Inviolable monotonic security consecutive counter (anti-deletion & full audit trail)
+let securityConsecutiveCounter: number = 1000 + ticketsDb.length;
 
 // Pre-configured system demo users with realistic roles
 const SYSTEM_USERS = [
@@ -434,21 +446,34 @@ async function startServer() {
         msg.estado,
       ]);
 
-      // Relational insert for ticket
+      // Relational insert for ticket with full fields matching web structure
+      const consecutivo = ticket.consecutivoSeguridad || `CS-${new Date().getFullYear()}-WPP-${String(ticket.id).replace(/\D/g, '').slice(-4).padStart(4, '0')}`;
+      const tipoRep = ticket.tipoReporte || ticket.categoriaNombre || 'Incidencia General';
+
       await pool.query(`
         INSERT INTO tickets 
-        (id, numero_registro, asunto, descripcion, categoria_id, estado, prioridad, sector_id, direccion_detallada, lugar_registro, canal_intake, canal_radicacion, fecha_creacion, hora_creacion)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), CURTIME())
-        ON DUPLICATE KEY UPDATE descripcion=VALUES(descripcion), estado=VALUES(estado)
+        (id, numero_registro, consecutivo_seguridad, tipo_reporte, asunto, descripcion, categoria_id, estado, prioridad, sector_id, ubicacion_lat, ubicacion_lng, direccion_detallada, lugar_registro, canal_intake, canal_radicacion, fecha_creacion, hora_creacion)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), CURTIME())
+        ON DUPLICATE KEY UPDATE 
+          descripcion=VALUES(descripcion), 
+          estado=VALUES(estado),
+          consecutivo_seguridad=VALUES(consecutivo_seguridad),
+          tipo_reporte=VALUES(tipo_reporte),
+          ubicacion_lat=VALUES(ubicacion_lat),
+          ubicacion_lng=VALUES(ubicacion_lng)
       `, [
         ticket.id,
         ticket.numeroRegistro,
+        consecutivo,
+        tipoRep,
         ticket.asunto,
         ticket.descripcion,
         ticket.categoriaId,
         ticket.estado,
         ticket.prioridad,
         ticket.sectorNombre,
+        ticket.ubicacionLat || 9.0834,
+        ticket.ubicacionLng || -79.5312,
         ticket.direccionDetallada || '',
         ticket.lugarRegistro || 'WhatsApp Comunitario (n8n)',
         'WhatsApp Comunitario (n8n)',
@@ -457,19 +482,25 @@ async function startServer() {
 
       // Relational insert for reportante
       await pool.query(`
-        INSERT INTO reportantes (id, ticket_id, nombre, cedula, telefono, email, genero, edad, sector)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), telefono=VALUES(telefono)
+        INSERT INTO reportantes (id, ticket_id, nombre, apellido, cedula, telefono, email, genero, edad, sector, registrado_padron)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE 
+          nombre=VALUES(nombre), 
+          apellido=VALUES(apellido),
+          telefono=VALUES(telefono),
+          registrado_padron=VALUES(registrado_padron)
       `, [
         `rep-${ticket.id}`,
         ticket.id,
         ticket.reportante.nombre,
+        ticket.reportante.apellido || '',
         ticket.reportante.cedula || '8-WhatsApp',
         ticket.reportante.telefono || msg.telefono,
         ticket.reportante.email || '',
         ticket.reportante.genero || 'femenino',
         ticket.reportante.edad || 35,
         ticket.reportante.sector || msg.sector,
+        ticket.reportante.registradoEnPadron ? 1 : 0,
       ]);
     } catch (err: any) {
       console.warn('⚠️ [MySQL Relacional WhatsApp] Warning:', err?.message);
@@ -871,6 +902,114 @@ async function startServer() {
     }
   });
 
+  // Force Synchronization: WhatsApp messages to MySQL Database with Full Web Schema Parity
+  app.post('/api/whatsapp/force-sync', async (req: Request, res: Response) => {
+    try {
+      // 1. Ensure MySQL table columns exist
+      await ensureDatabaseTablesSchema();
+
+      let syncedCount = 0;
+      const now = new Date();
+      const fechaCreacion = now.toISOString().split('T')[0];
+      const horaCreacion = now.toTimeString().split(' ')[0];
+      const nowFormatted = `${fechaCreacion} ${horaCreacion}`;
+
+      // 2. Iterate through all WhatsApp messages in buffer
+      for (let i = 0; i < whatsappMessagesDb.length; i++) {
+        const msg = whatsappMessagesDb[i];
+        let ticket = ticketsDb.find((t) => t.id === msg.ticketId || t.numeroRegistro === msg.ticketId);
+
+        // Name split
+        const nameParts = (msg.remitente || 'Ciudadano WhatsApp').trim().split(/\s+/);
+        const firstName = nameParts[0] || 'Ciudadano';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
+        const sectorStr = msg.sector || 'Altos de Las Cumbres';
+        const coords = SECTOR_COORDS_MAP[sectorStr] || { lat: 9.0834, lng: -79.5312 };
+
+        if (!ticket) {
+          const formattedNum = msg.ticketId || `TK-WPP-${new Date().getFullYear()}-${String(i + 1).padStart(3, '0')}`;
+          ticket = {
+            id: formattedNum,
+            numeroRegistro: formattedNum,
+            consecutivoSeguridad: `CS-${new Date().getFullYear()}-WPP-${String(i + 1).padStart(4, '0')}`,
+            tipoReporte: 'Alumbrado Eléctrico',
+            asunto: msg.mensaje.length > 60 ? `${msg.mensaje.substring(0, 57)}...` : msg.mensaje,
+            descripcion: `[Forzado desde WhatsApp]: ${msg.mensaje}\nTeléfono: ${msg.telefono}\nSector: ${sectorStr}`,
+            categoriaId: 'alumbrado-electrico',
+            categoriaNombre: 'Alumbrado Eléctrico',
+            estado: 'abierto',
+            prioridad: 'media',
+            sectorId: sectorStr,
+            sectorNombre: sectorStr,
+            ubicacionLat: coords.lat,
+            ubicacionLng: coords.lng,
+            direccionDetallada: `Reportado vía WhatsApp por ${msg.remitente} - Sector ${sectorStr}`,
+            lugarRegistro: 'WhatsApp Comunitario (n8n)',
+            canalIntake: 'WhatsApp Comunitario (n8n)',
+            canalRadicacion: 'whatsapp_comunal',
+            fechaCreacion,
+            horaCreacion,
+            fechaActualizacion: nowFormatted,
+            reportante: {
+              nombre: firstName,
+              apellido: lastName,
+              cedula: '8-WhatsApp',
+              telefono: msg.telefono,
+              email: `${msg.telefono.replace(/\D/g, '')}@whatsapp.comunal`,
+              genero: 'femenino',
+              edad: 34,
+              sector: sectorStr,
+              registradoEnPadron: false,
+            },
+            adjuntos: [],
+            trazabilidad: [
+              {
+                id: `tr-sync-${Date.now()}-${i}`,
+                ticketId: formattedNum,
+                tipoEvento: 'creacion',
+                fechaHora: nowFormatted,
+                responsable: 'Sincronizador Forzado WhatsApp',
+                rolResponsable: 'Sistema de Sincronización',
+                nota: 'Registro forzado a la base de datos relacional para paridad web.',
+                estadoNuevo: 'abierto',
+              },
+            ],
+          };
+          ticketsDb.unshift(ticket);
+        } else {
+          // Enrich ticket if missing consecutive or surname
+          if (!ticket.consecutivoSeguridad) {
+            ticket.consecutivoSeguridad = `CS-${new Date().getFullYear()}-WPP-${String(i + 1).padStart(4, '0')}`;
+          }
+          if (!ticket.tipoReporte) {
+            ticket.tipoReporte = ticket.categoriaNombre || 'Incidencia General';
+          }
+          if (!ticket.reportante.apellido && lastName) {
+            ticket.reportante.apellido = lastName;
+          }
+          if (!ticket.ubicacionLat) {
+            ticket.ubicacionLat = coords.lat;
+            ticket.ubicacionLng = coords.lng;
+          }
+        }
+
+        // Persist to MySQL
+        await persistRelationalWhatsApp(ticket, msg);
+        syncedCount++;
+      }
+
+      return res.json({
+        success: true,
+        syncedCount,
+        totalTickets: ticketsDb.length,
+        message: `Se sincronizaron forzadamente ${syncedCount} reportes de WhatsApp con la base de datos relacional MySQL con campos estandarizados (cédula, predictivo y consecutivo).`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   // Tickets: List with Filters, Pagination, and RBAC Sensitive Field Masking
   app.get('/api/tickets', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -1065,6 +1204,79 @@ async function startServer() {
     });
   });
 
+  // Citizens: Lookup by Cédula (Verificación en Padrón Comunitario)
+  app.get('/api/citizens/lookup', (req: Request, res: Response) => {
+    try {
+      const cedulaQuery = (req.query.cedula as string || '').trim();
+      if (!cedulaQuery) {
+        return res.json({ success: true, found: false, citizen: null });
+      }
+
+      const cleanQuery = cedulaQuery.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      
+      // Look up in usersDb or ticketsDb existing reportantes
+      let foundUser = usersDb.find((u) => {
+        const uCed = (u.cedula || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        return uCed.length > 0 && uCed === cleanQuery;
+      });
+
+      if (foundUser) {
+        const parts = foundUser.nombre.trim().split(/\s+/);
+        const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0] || '';
+        const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+
+        return res.json({
+          success: true,
+          found: true,
+          citizen: {
+            id: foundUser.id,
+            nombre: firstName,
+            apellido: lastName,
+            nombreCompleto: foundUser.nombre,
+            cedula: foundUser.cedula,
+            telefono: foundUser.telefono || '',
+            email: foundUser.email || '',
+            sector: foundUser.sector || '',
+            genero: foundUser.genero || 'otro',
+            edad: foundUser.edad || 35,
+            registradoEnPadron: true,
+          },
+        });
+      }
+
+      // Check in historical tickets if previously reported
+      const prevTicket = ticketsDb.find((t) => {
+        const repCed = (t.reportante?.cedula || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        return repCed.length > 0 && repCed === cleanQuery;
+      });
+
+      if (prevTicket && prevTicket.reportante) {
+        const rep = prevTicket.reportante;
+        return res.json({
+          success: true,
+          found: true,
+          citizen: {
+            id: `usr-rep-${cleanQuery}`,
+            nombre: rep.nombre,
+            apellido: rep.apellido || '',
+            nombreCompleto: rep.apellido ? `${rep.nombre} ${rep.apellido}` : rep.nombre,
+            cedula: rep.cedula,
+            telefono: rep.telefono || '',
+            email: rep.email || '',
+            sector: rep.sector || '',
+            genero: rep.genero || 'otro',
+            edad: rep.edad || 35,
+            registradoEnPadron: true,
+          },
+        });
+      }
+
+      return res.json({ success: true, found: false, citizen: null });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   // Tickets: Create New Ticket with Zod Validation
   app.post('/api/tickets', optionalAuth, (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -1087,22 +1299,70 @@ async function startServer() {
       );
       const categoriaNombre = catObj ? catObj.nombre : (body.categoriaNombre || 'General');
 
+      // Prefix calculation according to official category (ALU, AGU, POD, SOC, CER, DEP)
+      const catPrefix = getCategoryPrefix(catObj?.nombre || categoriaNombre, body.categoriaId, catObj?.prefijo);
+      const year = new Date().getFullYear();
+
+      // Count tickets in this category for sequential ticket ID
+      const catTicketsCount = ticketsDb.filter(
+        (t) => t.id.startsWith(`${catPrefix}-`) || t.categoriaId === body.categoriaId
+      ).length + 1;
+      const formattedNum = `${catPrefix}-${year}-${String(catTicketsCount).padStart(3, '0')}`;
+
+      // Inviolable monotonic security consecutive counter
+      securityConsecutiveCounter += 1;
+      const consecutivoSeguridad =
+        body.consecutivoSeguridad ||
+        `CS-${year}-${catPrefix}-${String(securityConsecutiveCounter).padStart(5, '0')}`;
+
       // Verify sector
       const sectorMatched = systemSectors.find(
         (s) => s.toLowerCase() === body.sectorNombre.toLowerCase()
       ) || body.sectorNombre;
 
-      const nextNum = ticketsDb.length + 1;
-      const formattedNum = `TK-${new Date().getFullYear()}-${String(nextNum).padStart(3, '0')}`;
       const now = new Date();
       const nowFormatted = now.toISOString().replace('T', ' ').substring(0, 19);
 
       const creatorName = req.user?.nombre || body.creadoPor || 'Sistema Web (Ciudadano)';
       const creatorRole = req.user?.rol || 'Portal de Entrada';
 
+      const fullNombre = body.reportante.apellido
+        ? `${body.reportante.nombre.trim()} ${body.reportante.apellido.trim()}`
+        : body.reportante.nombre.trim();
+
+      // Register or update citizen in usersDb if requested or new
+      const cleanCedula = body.reportante.cedula.trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      let isRegistered = false;
+      const existingUser = usersDb.find(
+        (u) => (u.cedula || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanCedula
+      );
+
+      if (existingUser) {
+        isRegistered = true;
+      } else if (body.reportante.registradoEnPadron || body.reportante.nombre) {
+        usersDb.push({
+          id: `usr-cit-${Date.now()}`,
+          nombre: fullNombre,
+          email: body.reportante.email || `${cleanCedula}@comunidad.gob.pa`,
+          cedula: body.reportante.cedula.trim(),
+          telefono: body.reportante.telefono || '',
+          sector: sectorMatched,
+          genero: body.reportante.genero || 'otro',
+          edad: body.reportante.edad || 35,
+          rol: 'usuario',
+          estado: 'activo',
+          departamento: 'Padrón de Reportantes Comunitarios',
+          lugarRegistro: 'Registro por Incidencia (Fase 1)',
+          fechaRegistro: now.toISOString().split('T')[0],
+        });
+        isRegistered = true;
+      }
+
       const newTicket: Ticket = {
         id: formattedNum,
         numeroRegistro: formattedNum,
+        consecutivoSeguridad,
+        tipoReporte: catObj ? catObj.nombre : (body.tipoReporte || 'Alumbrado Eléctrico'),
         asunto: body.asunto.trim(),
         descripcion: body.descripcion.trim(),
         categoriaId: body.categoriaId,
@@ -1114,17 +1374,23 @@ async function startServer() {
         ubicacionLat: body.ubicacionLat || 9.082,
         ubicacionLng: body.ubicacionLng || -79.528,
         direccionDetallada: body.direccionDetallada || '',
+        lugarRegistro: 'Portal Digital Comunal',
+        canalIntake: 'Formulario Web Especializado',
+        canalRadicacion: 'web_portal',
         fechaCreacion: now.toISOString().split('T')[0],
         horaCreacion: now.toTimeString().split(' ')[0],
         fechaActualizacion: nowFormatted,
+        funcionarioRegistro: creatorName,
         reportante: {
           nombre: body.reportante.nombre.trim(),
+          apellido: (body.reportante.apellido || '').trim(),
           cedula: body.reportante.cedula.trim(),
           telefono: body.reportante.telefono || '',
           email: body.reportante.email || '',
-          genero: body.reportante.genero,
-          edad: body.reportante.edad,
+          genero: body.reportante.genero || 'otro',
+          edad: body.reportante.edad || 35,
           sector: sectorMatched,
+          registradoEnPadron: isRegistered,
         },
         adjuntos: (body.adjuntos || []).map((a, idx) => ({
           id: a.id || `att-${Date.now()}-${idx}`,
@@ -1144,10 +1410,13 @@ async function startServer() {
             fechaHora: nowFormatted,
             responsable: creatorName,
             rolResponsable: creatorRole,
-            nota: 'Ticket radicado formalmente en el sistema municipal.',
+            nota: `[Consecutivo de Seguridad: ${consecutivoSeguridad}] Reporte de ${catObj?.nombre || 'Incidencia'} radicado por ${fullNombre} (Cédula: ${body.reportante.cedula}) en sector ${sectorMatched}. Secuencia inviolable auditada.`,
             estadoNuevo: 'abierto',
+            canalInteraccion: 'web',
+            minutosConsumidos: 2,
           },
         ],
+        datosEspecificosReporte: body.datosEspecificosReporte,
       };
 
       ticketsDb.unshift(newTicket);
@@ -1155,7 +1424,7 @@ async function startServer() {
       return res.status(201).json({
         success: true,
         data: newTicket,
-        message: `Ticket ${formattedNum} radicado exitosamente.`,
+        message: `Ticket ${formattedNum} radicado exitosamente con consecutivo de seguridad ${consecutivoSeguridad}.`,
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: err.message });

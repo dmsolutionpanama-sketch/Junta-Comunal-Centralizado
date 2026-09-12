@@ -20,7 +20,7 @@ export const DEFAULT_SYSTEM_THEME: SystemCustomTheme = {
 
   // Dimensiones del Back End (Ancho y Alto)
   sidebarWidth: 260, // Ancho estándar del menú lateral (px)
-  mainMaxWidth: 'full', // Ancho máximo del contenedor: 'full' | '1400px' | '1600px' | '1800px'
+  mainMaxWidth: '1400px', // Ancho máximo del contenedor fijado a 1400px full width responsive
   navbarHeight: 64, // Alto de la barra superior (px)
   cardPadding: 'normal', // Espaciado de tarjetas: 'compact' | 'normal' | 'relaxed'
   tableRowHeight: 44, // Altura estándar de filas en tablas (px)

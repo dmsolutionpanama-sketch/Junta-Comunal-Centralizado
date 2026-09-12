@@ -4,6 +4,7 @@ import {
   ShieldCheck,
   Search,
   Plus,
+  PlusCircle,
   LogIn,
   CheckCircle2,
   Clock,
@@ -68,7 +69,11 @@ interface CitizenIndexViewProps {
   onCreateTicketDirect: (ticketInput: CreateTicketInput) => Promise<boolean>;
 }
 
-export type CitizenTab = 'desempeno-sector' | 'estado-global' | 'listado-tickets';
+export type CitizenTab =
+  | 'registrar-incidencia'
+  | 'desempeno-sector'
+  | 'estado-global'
+  | 'listado-tickets';
 
 export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
   tickets,
@@ -312,135 +317,233 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
       {/* 1. BANNER INSTITUCIONAL FULL-WIDTH Y AJUSTABLE EN ALTURA (VIDEO YOUTUBE O FOTO SLIDE) */}
       <InstitutionalBanner />
 
-      {/* 2. ENCABEZADO INSTITUCIONAL CON NOMBRE */}
+      {/* 2. ENCABEZADO INSTITUCIONAL CON NOMBRE (1400px RESPONSIVE) */}
       <header
-        className={`sticky top-0 z-40 border-b backdrop-blur-md px-4 sm:px-8 py-3 flex items-center justify-between transition-colors ${
+        className={`sticky top-0 z-40 border-b backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3 transition-colors ${
           isDarkMode
             ? 'bg-slate-900/95 border-slate-800 text-slate-100'
             : 'bg-white/95 border-slate-200 text-slate-900'
         }`}
       >
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-base sm:text-lg tracking-tight text-blue-600 dark:text-blue-400">
-                Junta Comunal
-              </span>
-              <span className="text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
-                Atención Ciudadana
-              </span>
+        <div className="w-full max-w-[1400px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Gestión Comunitaria de Incidencias & Obras Comunitarias
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-base sm:text-lg tracking-tight text-blue-600 dark:text-blue-400">
+                  Junta Comunal
+                </span>
+                <span className="text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
+                  Atención Ciudadana
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Gestión Comunitaria de Incidencias & Obras Comunitarias
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Right Actions: Dark Mode & Staff Login */}
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={toggleDarkMode}
-            className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-              isDarkMode
-                ? 'bg-slate-800 border-slate-700 text-amber-400'
-                : 'bg-white border-slate-200 text-slate-600'
-            }`}
-            title="Cambiar tema claro/oscuro"
-          >
-            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
+          {/* Right Actions: Dark Mode & Staff Login */}
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={toggleDarkMode}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-amber-400'
+                  : 'bg-white border-slate-200 text-slate-600'
+              }`}
+              title="Cambiar tema claro/oscuro"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
 
-          <button
-            type="button"
-            id="btn-public-login"
-            onClick={onGoToLogin}
-            className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs hover:shadow-md shadow-blue-500/20 transition-all cursor-pointer"
-          >
-            <LogIn className="w-4 h-4" />
-            <span>Acceso Funcionarios</span>
-          </button>
+            <button
+              type="button"
+              id="btn-public-login"
+              onClick={onGoToLogin}
+              className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs hover:shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Acceso Funcionarios</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* 3. LUEGO DEL NOMBRE: SOLO EL SEARCH DE TICKETS Y EL FORM PARA CREAR REPORTE */}
-      <section className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 pb-4 space-y-6">
-        {/* A. SEARCH DE TICKETS PROMINENTE */}
-        <div className="bg-white dark:bg-slate-900 border-2 border-blue-500/30 dark:border-blue-500/40 rounded-2xl p-4 sm:p-5 shadow-lg shadow-blue-500/5 space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Search className="w-4 h-4 text-blue-600" />
-              <span>Consulta Rápida de Tickets de Incidencia</span>
-            </label>
-            <span className="text-[11px] text-slate-400">
-              Seguimiento vecinal en tiempo real
-            </span>
-          </div>
+      {/* 3. LUEGO DEL NOMBRE: SOLO EL SEARCH DE TICKETS Y EL MENÚ DE NAVEGACIÓN (1400PX FULL WIDTH) */}
+      <section className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-2 space-y-4">
+        {/* A. BARRA SUPERIOR: SEARCH DE TICKETS PROMINENTE + BOTÓN RÁPIDO PARA RADICAR */}
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <div className="flex-1 bg-white dark:bg-slate-900 border-2 border-blue-500/30 dark:border-blue-500/40 rounded-2xl p-3 sm:p-4 shadow-lg shadow-blue-500/5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Search className="w-4 h-4 text-blue-600" />
+                <span>Consulta Rápida de Tickets de Incidencia</span>
+              </label>
+              <span className="text-[11px] text-slate-400">
+                Seguimiento vecinal en tiempo real
+              </span>
+            </div>
 
-          <div className="relative flex items-center bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 p-1 focus-within:border-blue-600 transition-all">
-            <Search className="w-4 h-4 text-blue-600 ml-2.5 shrink-0" />
-            <input
-              type="text"
-              id="citizen-ticket-search-box"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔍 Ingrese código (Ej: TK-2025-001), sector, alumbrado o palabra clave..."
-              className="w-full px-3 py-2 text-xs sm:text-sm bg-transparent border-none outline-hidden text-slate-900 dark:text-slate-100 placeholder:text-slate-400 font-medium"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="p-1 text-slate-400 hover:text-slate-600 text-xs font-bold mr-1"
-              >
-                ✕
-              </button>
+            <div className="relative flex items-center bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 p-1 focus-within:border-blue-600 transition-all">
+              <Search className="w-4 h-4 text-blue-600 ml-2.5 shrink-0" />
+              <input
+                type="text"
+                id="citizen-ticket-search-box"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔍 Ingrese código (Ej: TK-2025-001), sector, alumbrado o palabra clave..."
+                className="w-full px-3 py-1.5 text-xs sm:text-sm bg-transparent border-none outline-hidden text-slate-900 dark:text-slate-100 placeholder:text-slate-400 font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="p-1 text-slate-400 hover:text-slate-600 text-xs font-bold mr-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Quick matches alert if searched */}
+            {searchQuery.trim() && (
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                  <span>Coincidencias encontradas ({filteredTickets.length}):</span>
+                  {filteredTickets.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('listado-tickets')}
+                      className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                    >
+                      Ver en listado completo →
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                  {filteredTickets.slice(0, 4).map((t) => (
+                    <div
+                      key={t.id}
+                      onClick={() => setSelectedTicket(t)}
+                      className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 bg-white dark:bg-slate-800 flex items-center justify-between text-xs cursor-pointer transition-all shadow-xs"
+                    >
+                      <div className="truncate mr-2">
+                        <div className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                          {t.numeroRegistro}
+                        </div>
+                        <div className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                          {t.asunto}
+                        </div>
+                      </div>
+                      {getStatusBadge(t.estado)}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Quick matches alert if searched */}
-          {searchQuery.trim() && (
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-              <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-                <span>Coincidencias encontradas ({filteredTickets.length}):</span>
-                {filteredTickets.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('listado-tickets')}
-                    className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
-                  >
-                    Ver en listado completo →
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
-                {filteredTickets.slice(0, 4).map((t) => (
-                  <div
-                    key={t.id}
-                    onClick={() => setSelectedTicket(t)}
-                    className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 bg-white dark:bg-slate-800 flex items-center justify-between text-xs cursor-pointer transition-all shadow-xs"
-                  >
-                    <div className="truncate mr-2">
-                      <div className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                        {t.numeroRegistro}
-                      </div>
-                      <div className="font-medium text-slate-800 dark:text-slate-200 truncate">
-                        {t.asunto}
-                      </div>
-                    </div>
-                    {getStatusBadge(t.estado)}
-                  </div>
-                ))}
-              </div>
+          {/* Quick CTA button */}
+          <button
+            type="button"
+            id="btn-quick-new-report"
+            onClick={() => setActiveTab('registrar-incidencia')}
+            className={`flex items-center justify-center gap-2.5 px-5 py-4 rounded-2xl font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer shrink-0 ${
+              activeTab === 'registrar-incidencia'
+                ? 'bg-blue-600 text-white shadow-blue-500/25 ring-2 ring-blue-500/40'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/20'
+            }`}
+          >
+            <PlusCircle className="w-5 h-5" />
+            <div className="text-left">
+              <div className="leading-tight">Registrar Incidencia</div>
+              <div className="text-[10px] font-normal text-blue-100">Reporte vecinal directo</div>
             </div>
-          )}
+          </button>
         </div>
 
-        {/* B. FORMULARIO PARA CREAR UN REPORTE DE INCIDENCIA */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+        {/* B. LAS 4 OPCIONES DEL MENÚ (TABS) A 1400PX FULL WIDTH */}
+        <div className="flex items-center justify-start border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto gap-2 scrollbar-thin pt-2">
+          {/* Opción 1: Formulario de Incidencias */}
+          <button
+            type="button"
+            id="tab-registrar-incidencia"
+            onClick={() => setActiveTab('registrar-incidencia')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'registrar-incidencia'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <PlusCircle className="w-4 h-4 text-blue-400" />
+            <span>Registrar Incidencia</span>
+            <span
+              className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded font-bold ${
+                activeTab === 'registrar-incidencia'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400'
+              }`}
+            >
+              Formulario
+            </span>
+          </button>
+
+          {/* Opción 2: Desempeño por Área y Sector */}
+          <button
+            type="button"
+            id="tab-desempeno-sector"
+            onClick={() => setActiveTab('desempeno-sector')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'desempeno-sector'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Desempeño por Área y Sector</span>
+          </button>
+
+          {/* Opción 3: Estado Global (Gráficos) */}
+          <button
+            type="button"
+            id="tab-estado-global"
+            onClick={() => setActiveTab('estado-global')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'estado-global'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <PieChartIcon className="w-4 h-4" />
+            <span>Estado Global (Gráficos)</span>
+          </button>
+
+          {/* Opción 4: Listado de Tickets */}
+          <button
+            type="button"
+            id="tab-listado-tickets"
+            onClick={() => setActiveTab('listado-tickets')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'listado-tickets'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>Listado de Tickets ({filteredTickets.length})</span>
+          </button>
+        </div>
+      </section>
+
+      {/* 4. CONTENIDO PRINCIPAL POR OPCIÓN DEL MENÚ (FULL WIDTH 1400PX & RESPONSIVE) */}
+      <section className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-2 pb-12 space-y-6">
+        {/* OPCIÓN DEL MENÚ 1: FORMULARIO DE REGISTRO DE INCIDENCIAS CIUDADANAS */}
+        {activeTab === 'registrar-incidencia' && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center">
@@ -726,60 +829,10 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
             </div>
           )}
         </div>
-      </section>
-
-      {/* 4. BOTONES TIPO PESTAÑA:
-          Pestaña 1: Desempeño por Área de Servicio y Atención Comunitaria por Sector
-          Pestaña 2: Estado Global (Gráficos)
-          Pestaña 3: Listado de Tickets (con paginación 10, 25, 50) */}
-      <section className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-12 space-y-6">
-        {/* Navigation Tabs */}
-        <div className="flex items-center justify-start sm:justify-center border-b border-slate-200 dark:border-slate-800 pb-1 overflow-x-auto gap-2 scrollbar-thin">
-          <button
-            type="button"
-            id="tab-desempeno-sector"
-            onClick={() => setActiveTab('desempeno-sector')}
-            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'desempeno-sector'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span>Desempeño por Área y Sector</span>
-          </button>
-
-          <button
-            type="button"
-            id="tab-estado-global"
-            onClick={() => setActiveTab('estado-global')}
-            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'estado-global'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <PieChartIcon className="w-4 h-4" />
-            <span>Estado Global (Gráficos)</span>
-          </button>
-
-          <button
-            type="button"
-            id="tab-listado-tickets"
-            onClick={() => setActiveTab('listado-tickets')}
-            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'listado-tickets'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Listado de Tickets ({filteredTickets.length})</span>
-          </button>
-        </div>
+        )}
 
         {/* ============================================================
-            PESTAÑA 1: DESEMPEÑO POR ÁREA DE SERVICIO Y ATENCIÓN POR SECTOR
+            OPCIÓN DEL MENÚ 2: DESEMPEÑO POR ÁREA DE SERVICIO Y ATENCIÓN POR SECTOR
         ============================================================ */}
         {activeTab === 'desempeno-sector' && (
           <div className="space-y-8 animate-in fade-in duration-200">
@@ -1407,7 +1460,7 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
 
       {/* 6. PIE DE PÁGINA MUNICIPAL */}
       <footer className="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-6 px-4 sm:px-8 text-xs text-slate-500 dark:text-slate-400 transition-colors">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="w-full max-w-[1400px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-blue-600" />
             <span className="font-bold text-slate-800 dark:text-slate-200">

@@ -18,6 +18,7 @@ import { ConfigView } from './components/config/ConfigView';
 import { CustomizationSettingsView } from './components/config/CustomizationSettingsView';
 import { AdminMaintenanceView } from './components/admin/AdminMaintenanceView';
 import { AdminVersionControlView } from './components/admin/AdminVersionControlView';
+import { AdminBannerConfigView } from './components/admin/AdminBannerConfigView';
 import { NewTicketModal } from './components/tickets/NewTicketModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
 import { BackendSwitcherModal } from './components/layout/BackendSwitcherModal';
@@ -455,6 +456,11 @@ const MainAppContent: React.FC = () => {
               {/* 7. Configuración & Base de Datos */}
               {currentView === 'configuracion' && (
                 <ConfigView onResetMockData={handleResetMockData} />
+              )}
+
+              {/* 7.1 Configuración de Banner Institucional (Super Admin Only) */}
+              {currentView === 'configuracion-banner' && (
+                <AdminBannerConfigView currentUser={currentUser} />
               )}
 
               {/* 8. Dashboard (ALWAYS LAST OPTION in Sidebar hierarchy) */}

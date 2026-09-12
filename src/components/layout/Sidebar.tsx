@@ -25,6 +25,8 @@ import {
   Flame,
   GitBranch,
   History,
+  Tv,
+  PlusCircle,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
@@ -39,6 +41,7 @@ export type MainNavView =
   | 'directorio-ciudadanos'
   | 'personalizacion-diseno'
   | 'configuracion'
+  | 'configuracion-banner'
   | 'mantenimiento-admin'
   | 'control-versiones'
   | 'dashboard';
@@ -60,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedCategoryDashboard,
   currentUser,
   onNavigate,
+  openNewTicketModal,
   onOpenCitizenPortal,
   onOpenBackendModal,
   isMobileOpen = false,
@@ -112,6 +116,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation Options */}
       <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-1 scrollbar-thin">
+        {/* Registro de Incidencias (Opción Directa en Menú) */}
+        <button
+          type="button"
+          id="nav-crear-incidencia-directa"
+          onClick={() => {
+            openNewTicketModal();
+            if (onCloseMobile) onCloseMobile();
+          }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-150 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm mb-2"
+        >
+          <div className="flex items-center gap-2.5 truncate">
+            <PlusCircle className="w-4.5 h-4.5 shrink-0" />
+            <span className="truncate">Registrar Incidencia</span>
+          </div>
+          <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-white/20 text-white uppercase tracking-tight">
+            + Nuevo
+          </span>
+        </button>
+
         {/* 1. Vista General (Primera Opción) */}
         <button
           type="button"
@@ -374,6 +397,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
           <span className="truncate">Configuración</span>
         </button>
+
+        {/* 7.1 Configuración de Banner Institucional (Solo Super Administrador - Debajo de Configuración) */}
+        {isSuperiorAdmin && (
+          <button
+            type="button"
+            id="nav-configuracion-banner"
+            onClick={() => onNavigate('configuracion-banner')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+              currentView === 'configuracion-banner'
+                ? isDarkMode
+                  ? 'bg-blue-950/60 text-blue-300 font-semibold border border-blue-800/60'
+                  : 'bg-blue-50 text-blue-700 font-semibold border border-blue-200'
+                : isDarkMode
+                ? 'text-blue-300 hover:bg-blue-950/40 hover:text-blue-200'
+                : 'text-blue-700 hover:bg-blue-50/80 hover:text-blue-800'
+            }`}
+          >
+            <div className="flex items-center gap-3 truncate">
+              <Tv className="w-4.5 h-4.5 shrink-0 text-blue-600 dark:text-blue-400" />
+              <span className="truncate">Configuración de Banner</span>
+            </div>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 uppercase">
+              Super Admin
+            </span>
+          </button>
+        )}
 
         {/* Conexión 2 Backends */}
         {onOpenBackendModal && (

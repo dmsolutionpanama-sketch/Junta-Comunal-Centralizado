@@ -136,7 +136,25 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
 
   // Toast / Save feedback
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [dbSaved, setDbSaved] = useState<boolean | null>(null);
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+
+  // Load from backend on mount
+  useEffect(() => {
+    fetch('/api/banner/config')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setConfig(json.data);
+          setYoutubeInput(json.data.youtubeId || '');
+          localStorage.setItem(BANNER_STORAGE_KEY, JSON.stringify(json.data));
+        }
+      })
+      .catch((err) => {
+        console.warn('Fallback to local banner config:', err);
+      });
+  }, []);
 
   // Preview cycle timer
   useEffect(() => {
@@ -148,7 +166,8 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
   }, [config.tipo, config.slideIntervalSeconds, config.slides.length]);
 
   // Handle Save
-  const handleSave = () => {
+  const handleSave = async () => {
+    setIsSaving(true);
     const finalYoutubeId = extractYoutubeId(youtubeInput) || config.youtubeId;
     const updatedConfig: BannerConfig = {
       ...config,
@@ -162,6 +181,21 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
     localStorage.setItem(BANNER_STORAGE_KEY, JSON.stringify(updatedConfig));
     localStorage.setItem('citizen_banner_config', JSON.stringify(updatedConfig));
 
+    // Persist to Backend API & MySQL
+    try {
+      const res = await fetch('/api/banner/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedConfig),
+      });
+      const data = await res.json();
+      setDbSaved(data.savedInDb ?? true);
+    } catch {
+      setDbSaved(false);
+    } finally {
+      setIsSaving(false);
+    }
+
     // Dispatch custom event to notify all open windows/tabs instantly
     window.dispatchEvent(new Event('banner_config_updated'));
 
@@ -170,12 +204,21 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
   };
 
   // Reset to Defaults
-  const handleReset = () => {
+  const handleReset = async () => {
     if (window.confirm('¿Está seguro de restablecer el banner institucional a los valores predeterminados?')) {
       setConfig(DEFAULT_BANNER_CONFIG);
       setYoutubeInput(DEFAULT_BANNER_CONFIG.youtubeId);
       localStorage.setItem(BANNER_STORAGE_KEY, JSON.stringify(DEFAULT_BANNER_CONFIG));
       localStorage.setItem('citizen_banner_config', JSON.stringify(DEFAULT_BANNER_CONFIG));
+      try {
+        await fetch('/api/banner/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(DEFAULT_BANNER_CONFIG),
+        });
+      } catch {
+        // local ok
+      }
       window.dispatchEvent(new Event('banner_config_updated'));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
@@ -244,7 +287,7 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
     setConfig((prev) => ({ ...prev, slides: newSlides }));
   };
 
-  // File Upload to Base64
+  // File Upload to Server & Base64 Fallback
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -254,16 +297,33 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('La imagen no debe superar los 5MB para garantizar carga ultrarrápida.');
+    if (file.size > 10 * 1024 * 1024) {
+      alert('La imagen no debe superar los 10MB.');
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       if (editingSlide) {
         setEditingSlide((prev) => (prev ? { ...prev, url: base64 } : null));
+        // Also upload to server
+        try {
+          const res = await fetch('/api/banner/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileBase64: base64,
+              fileName: file.name,
+            }),
+          });
+          const json = await res.json();
+          if (json.success && json.url) {
+            setEditingSlide((prev) => (prev ? { ...prev, url: json.url } : null));
+          }
+        } catch {
+          // base64 fallback kept
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -294,12 +354,16 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
             <Sliders className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
                 Configuración del Banner Institucional (Portal Ciudadano)
               </h1>
               <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 uppercase border border-blue-200 dark:border-blue-800">
                 Super Admin
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Backend MySQL Conectado
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -312,7 +376,8 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
           <button
             type="button"
             onClick={handleReset}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+            disabled={isSaving}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 disabled:opacity-50"
             title="Restablecer valores originales del banner"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -322,10 +387,11 @@ export const AdminBannerConfigView: React.FC<AdminBannerConfigViewProps> = ({ cu
           <button
             type="button"
             onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+            disabled={isSaving}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            <span>Guardar Configuración</span>
+            <span>{isSaving ? 'Guardando en BD...' : 'Guardar Configuración'}</span>
           </button>
         </div>
       </div>

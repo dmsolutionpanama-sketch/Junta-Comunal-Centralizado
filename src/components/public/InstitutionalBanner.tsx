@@ -37,8 +37,21 @@ export const InstitutionalBanner: React.FC = () => {
 
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // Listen to live updates from Super Admin in backend
+  // Listen to live updates from Super Admin in backend and fetch initial config from API
   useEffect(() => {
+    // Initial fetch from backend API
+    fetch('/api/banner/config')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setConfig(json.data);
+          localStorage.setItem(BANNER_STORAGE_KEY, JSON.stringify(json.data));
+        }
+      })
+      .catch(() => {
+        // Fallback to local storage or defaults
+      });
+
     const handleConfigUpdate = () => {
       try {
         const savedV2 = localStorage.getItem(BANNER_STORAGE_KEY);
@@ -89,7 +102,7 @@ export const InstitutionalBanner: React.FC = () => {
     <div className="w-full bg-slate-950 select-none">
       <div
         style={{ height: `${config.altura}px` }}
-        className="relative w-full max-w-[1400px] mx-auto overflow-hidden transition-all duration-300"
+        className="relative w-full overflow-hidden transition-all duration-300"
       >
         {/* CASE A: YOUTUBE VIDEO BANNER */}
         {config.tipo === 'youtube' ? (
@@ -109,7 +122,7 @@ export const InstitutionalBanner: React.FC = () => {
             />
           </div>
         ) : (
-          /* CASE B: PHOTO SLIDESHOW BANNER */
+          /* CASE B: PHOTO SLIDESHOW BANNER (FULL WIDTH) */
           <div className="relative w-full h-full overflow-hidden">
             {activeSlides.map((slide, index) => {
               const isActive = index === currentSlide;
@@ -132,20 +145,22 @@ export const InstitutionalBanner: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-slate-950/20" />
                   )}
 
-                  {/* Slide Content Caption */}
-                  <div className="absolute bottom-6 sm:bottom-12 left-4 sm:left-10 lg:left-12 max-w-3xl text-white space-y-2.5 z-20 pr-4">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600/90 text-white text-[10px] sm:text-xs font-extrabold uppercase tracking-wider shadow-md backdrop-blur-xs">
-                      <Sparkles className="w-3.5 h-3.5 text-blue-200" />
-                      {slide.etiqueta}
-                    </span>
+                  {/* Slide Content Caption Aligned to 1400px Max-Width Grid */}
+                  <div className="absolute inset-0 w-full max-w-[1400px] mx-auto pointer-events-none px-4 sm:px-6 lg:px-8">
+                    <div className="absolute bottom-6 sm:bottom-12 left-4 sm:left-6 lg:left-8 max-w-3xl text-white space-y-2.5 z-20 pr-4 pointer-events-auto">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600/90 text-white text-[10px] sm:text-xs font-extrabold uppercase tracking-wider shadow-md backdrop-blur-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-200" />
+                        {slide.etiqueta}
+                      </span>
 
-                    <h1 className="text-xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
-                      {slide.titulo}
-                    </h1>
+                      <h1 className="text-xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
+                        {slide.titulo}
+                      </h1>
 
-                    <p className="text-xs sm:text-sm lg:text-base text-slate-200 line-clamp-2 max-w-2xl drop-shadow-xs font-normal">
-                      {slide.subtitulo}
-                    </p>
+                      <p className="text-xs sm:text-sm lg:text-base text-slate-200 line-clamp-2 max-w-2xl drop-shadow-xs font-normal">
+                        {slide.subtitulo}
+                      </p>
+                    </div>
                   </div>
                 </div>
               );
@@ -153,11 +168,11 @@ export const InstitutionalBanner: React.FC = () => {
 
             {/* Navigation Arrows (Visible if more than 1 slide) */}
             {activeSlides.length > 1 && (
-              <>
+              <div className="absolute inset-0 w-full max-w-[1400px] mx-auto pointer-events-none">
                 <button
                   type="button"
                   onClick={handlePrevSlide}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-slate-900/60 hover:bg-slate-900/90 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20"
+                  className="pointer-events-auto absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-slate-900/60 hover:bg-slate-900/90 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20 shadow-md"
                   title="Foto anterior"
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -165,14 +180,14 @@ export const InstitutionalBanner: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleNextSlide}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-slate-900/60 hover:bg-slate-900/90 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20"
+                  className="pointer-events-auto absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-slate-900/60 hover:bg-slate-900/90 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20 shadow-md"
                   title="Siguiente foto"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
 
                 {/* Indicators Dots */}
-                <div className="absolute bottom-4 right-4 sm:right-12 z-20 flex items-center gap-1.5">
+                <div className="pointer-events-auto absolute bottom-4 right-4 sm:right-8 z-20 flex items-center gap-1.5">
                   {activeSlides.map((_, dotIdx) => (
                     <button
                       key={dotIdx}
@@ -185,7 +200,7 @@ export const InstitutionalBanner: React.FC = () => {
                     />
                   ))}
                 </div>
-              </>
+              </div>
             )}
           </div>
         )}

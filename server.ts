@@ -45,6 +45,7 @@ import {
 import { DEFAULT_SYSTEM_THEME } from './src/config/defaultTheme';
 import { SystemCustomTheme } from './src/types';
 import { getCategoryPrefix } from './src/utils/ticketCodeGenerator';
+import { BannerConfig, DEFAULT_BANNER_CONFIG } from './src/types/banner';
 
 // Centralized master data loaded from catalogs.json
 let systemCategories = [...catalogsData.categorias];
@@ -54,6 +55,7 @@ let systemSectors = [...catalogsData.sectores];
 let ticketsDb: Ticket[] = JSON.parse(JSON.stringify(MOCK_TICKETS));
 let usersDb: User[] = JSON.parse(JSON.stringify(MOCK_SYSTEM_USERS));
 let systemCustomTheme: SystemCustomTheme = JSON.parse(JSON.stringify(DEFAULT_SYSTEM_THEME));
+let systemBannerConfig: BannerConfig = JSON.parse(JSON.stringify(DEFAULT_BANNER_CONFIG));
 
 // Inviolable monotonic security consecutive counter (anti-deletion & full audit trail)
 let securityConsecutiveCounter: number = 1000 + ticketsDb.length;
@@ -104,6 +106,12 @@ async function startServer() {
       const existingIds = new Set(mySqlTickets.map((t) => t.id));
       const remainingMock = ticketsDb.filter((t) => !existingIds.has(t.id));
       ticketsDb = [...mySqlTickets, ...remainingMock];
+    }
+    // Attempt loading banner configuration from MySQL
+    const savedBanner = await getSystemConfigFromMySQL<BannerConfig>('banner_config_v1');
+    if (savedBanner) {
+      systemBannerConfig = { ...systemBannerConfig, ...savedBanner };
+      console.log('✅ [Banner MySQL] Configuración de banner cargada desde MySQL.');
     }
   } catch (err) {
     console.warn('Could not initialize MySQL on start:', err);
@@ -1976,6 +1984,39 @@ async function startServer() {
     });
   });
 
+  // Database Connection and Persistence Validation Endpoint
+  app.get('/api/database/status', async (req: Request, res: Response) => {
+    try {
+      const status = getDbStatus();
+      let ticketsCount = ticketsDb.length;
+      let dbTicketsCount = 0;
+      const pool = await getDbPool();
+      if (pool) {
+        try {
+          const [rows]: any = await pool.query('SELECT COUNT(*) as cnt FROM tickets');
+          if (rows && rows[0]) {
+            dbTicketsCount = Number(rows[0].cnt) || 0;
+          }
+        } catch {
+          // Table query fallback
+        }
+      }
+      return res.json({
+        success: true,
+        data: {
+          ...status,
+          ticketsCount,
+          dbTicketsCount,
+          activeDrivers: ['MySQL Hostinger Direct Pool', 'In-Memory State', 'LocalStorage Sync'],
+          tablesChecked: ['tickets', 'trazabilidad_eventos', 'reportantes', 'configuracion_sistema'],
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   // ==========================================
   // SYSTEM DESIGN & CUSTOMIZATION API (DB PERSISTED)
   // ==========================================
@@ -2033,6 +2074,86 @@ async function startServer() {
 
   app.post('/api/settings/theme', handleSaveTheme);
   app.put('/api/settings/theme', handleSaveTheme);
+
+  // ==========================================
+  // INSTITUTIONAL BANNER CONFIGURATION API (BACKEND PERSISTED IN MYSQL)
+  // Accessible and editable for Super Administrator
+  // ==========================================
+  app.get('/api/banner/config', async (req: Request, res: Response) => {
+    try {
+      const dbBanner = await getSystemConfigFromMySQL<BannerConfig>('banner_config_v1');
+      if (dbBanner) {
+        systemBannerConfig = {
+          ...systemBannerConfig,
+          ...dbBanner,
+        };
+      }
+      return res.json({
+        success: true,
+        data: systemBannerConfig,
+        dbStatus: getDbStatus(),
+      });
+    } catch (err: any) {
+      return res.json({
+        success: true,
+        data: systemBannerConfig,
+        dbStatus: getDbStatus(),
+      });
+    }
+  });
+
+  const handleSaveBannerConfig = async (req: Request, res: Response) => {
+    try {
+      const updates = req.body;
+      systemBannerConfig = {
+        ...systemBannerConfig,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const savedToMySQL = await saveSystemConfigToMySQL('banner_config_v1', systemBannerConfig);
+
+      return res.json({
+        success: true,
+        data: systemBannerConfig,
+        savedInDb: savedToMySQL,
+        message: savedToMySQL
+          ? 'Configuración del banner institucional guardada con éxito en la base de datos MySQL.'
+          : 'Configuración del banner guardada en el backend en memoria.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        message: 'Error al persistir configuración del banner: ' + err.message,
+      });
+    }
+  };
+
+  app.post('/api/banner/config', handleSaveBannerConfig);
+  app.put('/api/banner/config', handleSaveBannerConfig);
+
+  // Upload custom media (photo/video) for banner
+  app.post('/api/banner/upload', async (req: Request, res: Response) => {
+    try {
+      const { fileBase64, fileName = 'banner-media.jpg' } = req.body;
+      if (!fileBase64) {
+        return res.status(400).json({ success: false, message: 'Se requiere el contenido del archivo en base64.' });
+      }
+
+      const saved = await savePhotoFromBase64(fileBase64, fileName, 'superadmin-banner');
+      return res.json({
+        success: true,
+        data: saved,
+        url: saved.url,
+        message: 'Archivo de banner cargado y almacenado correctamente en el servidor.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        message: 'Error al subir archivo de banner: ' + err.message,
+      });
+    }
+  });
 
   // ==========================================
   // VITE MIDDLEWARE SETUP

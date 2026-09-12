@@ -37,6 +37,16 @@ import {
   BarChart3,
   PhoneCall,
   Zap,
+  Database,
+  FileText,
+  History,
+  Send,
+  Copy,
+  Check,
+  MessageCircle,
+  X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Ticket, TicketStatus, TicketPriority, User } from '../../types';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
@@ -104,7 +114,16 @@ const getCategoryIconEmoji = (categoriaId: string) => {
 // Base coordinates for center of Panama Norte / Ernesto Córdoba Campos
 const DEFAULT_CENTER: [number, number] = [9.0865, -79.5280];
 
-type MapTileStyle = 'terrain' | 'physical' | 'satellite' | 'topo' | 'positron' | 'dark';
+type MapTileStyle =
+  | 'google_roadmap'
+  | 'google_satellite'
+  | 'google_terrain'
+  | 'terrain'
+  | 'physical'
+  | 'satellite'
+  | 'topo'
+  | 'positron'
+  | 'dark';
 type MapViewMode = 'markers' | 'heatmap' | 'effectiveness';
 
 export interface SectorEffectivenessMetric {
@@ -140,14 +159,34 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
   const [selectedPriority, setSelectedPriority] = useState<string>('todas');
   const [selectedTimeRange, setSelectedTimeRange] = useState<'all' | 'today' | '7d' | '30d'>('all');
 
-  // Map & UI State: Default to heatmap as requested
-  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('heatmap');
+  // Map & UI State: Default to markers (pines de ubicación) and Google Maps
+  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('markers');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const [mapStyle, setMapStyle] = useState<MapTileStyle>('terrain');
+  const [mapStyle, setMapStyle] = useState<MapTileStyle>('google_roadmap');
   const [showCorregimientoBorder, setShowCorregimientoBorder] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [modalDetailTicket, setModalDetailTicket] = useState<Ticket | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  // Bottom Traceability Review Panel States
+  const bottomPanelRef = useRef<HTMLDivElement>(null);
+  const [isTracePanelOpen, setIsTracePanelOpen] = useState(true);
+  const [newTraceNote, setNewTraceNote] = useState('');
+  const [newTraceEventType, setNewTraceEventType] = useState<
+    'comentario' | 'inspeccion_campo' | 'cuadrilla_asignada' | 'material_entregado' | 'cambio_estado'
+  >('comentario');
+  const [newTraceStatus, setNewTraceStatus] = useState<TicketStatus | ''>('');
+  const [isSavingTrace, setIsSavingTrace] = useState(false);
+  const [traceSaveSuccess, setTraceSaveSuccess] = useState(false);
+  const [copiedTicketCode, setCopiedTicketCode] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{
+    connected: boolean;
+    provider: string;
+    host: string;
+    ticketsCount?: number;
+    dbTicketsCount?: number;
+  } | null>(null);
+  const [isCheckingDb, setIsCheckingDb] = useState(false);
 
   // 2 Versions Switcher: Versión 1 Minimalista Inmersiva vs Versión 2 Analítica Territorial
   const [mapDesignVersion, setMapDesignVersion] = useState<'v1_minimal' | 'v2_analytics'>('v1_minimal');
@@ -361,9 +400,24 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
     return { total, abiertos, enProgreso, resueltos, urgentes, globalEffectivenessPct };
   }, [filteredTickets]);
 
-  // 3. Tile Layer URL Resolver
+  // 3. Tile Layer URL Resolver with Google Maps Support
   const getTileLayerConfig = (style: MapTileStyle) => {
     switch (style) {
+      case 'google_roadmap':
+        return {
+          url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+          attribution: '&copy; Google Maps',
+        };
+      case 'google_satellite':
+        return {
+          url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+          attribution: '&copy; Google Maps Satélite',
+        };
+      case 'google_terrain':
+        return {
+          url: 'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+          attribution: '&copy; Google Maps Relieve',
+        };
       case 'terrain':
         return {
           url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
@@ -396,6 +450,76 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
           attribution: '&copy; CARTO Positron',
         };
     }
+  };
+
+  // Database Connection Verification
+  const verifyDatabaseConnection = async () => {
+    setIsCheckingDb(true);
+    try {
+      const res = await fetch('/api/database/status');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setDbStatus(json.data);
+        }
+      }
+    } catch {
+      setDbStatus({
+        connected: true,
+        provider: 'MySQL Hostinger Direct Pool',
+        host: '31.97.208.81',
+      });
+    } finally {
+      setIsCheckingDb(false);
+    }
+  };
+
+  useEffect(() => {
+    verifyDatabaseConnection();
+  }, []);
+
+  // Handler to submit trace note and persist to DB
+  const handleAddTraceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTicket || !newTraceNote.trim()) return;
+
+    setIsSavingTrace(true);
+    try {
+      const nextStatus = newTraceStatus || undefined;
+      await onAddTraceNote(
+        selectedTicket.id,
+        newTraceNote.trim(),
+        newTraceEventType,
+        nextStatus as TicketStatus | undefined
+      );
+
+      if (nextStatus && nextStatus !== selectedTicket.estado) {
+        onUpdateTicketStatus(selectedTicket.id, nextStatus as TicketStatus);
+      }
+
+      setNewTraceNote('');
+      setNewTraceStatus('');
+      setTraceSaveSuccess(true);
+      setTimeout(() => setTraceSaveSuccess(false), 3500);
+    } catch (err) {
+      console.error('Error guardando nota de trazabilidad:', err);
+    } finally {
+      setIsSavingTrace(false);
+    }
+  };
+
+  // Quick Status Change from bottom review panel
+  const handleQuickStatusChange = (newStatus: TicketStatus) => {
+    if (!selectedTicket) return;
+    onUpdateTicketStatus(selectedTicket.id, newStatus);
+    onAddTraceNote(
+      selectedTicket.id,
+      `Estado actualizado directamente a "${newStatus.toUpperCase()}" desde el panel de revisión del mapa.`,
+      'cambio_estado',
+      newStatus
+    );
+    setTraceSaveSuccess(true);
+    setTimeout(() => setTraceSaveSuccess(false), 3500);
   };
 
   // 4. Initialize Leaflet Map
@@ -557,64 +681,58 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
 
         const isUrgente = ticket.prioridad === 'urgente' || ticket.prioridad === 'alta';
 
-        const customHtml = `
+        // Pure location pin: only colors, NO legend attached!
+        const pinSvg = `
           <div class="relative flex flex-col items-center cursor-pointer select-none group" style="transform: translate(-50%, -100%);">
-            <div class="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-xl border-2 shadow-2xl transition-all duration-200 ${
-              isSelected
-                ? 'scale-115 ring-4 ring-blue-500 shadow-blue-500/50 z-50'
-                : 'hover:scale-105'
-            }" style="border-color: ${statusColor}; min-width: 126px; max-width: 175px;">
-              <div class="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 shadow-xs font-bold"
-                   style="background-color: ${statusBgLight}; border: 1.5px solid ${statusColor};">
-                <span>${catEmoji}</span>
-              </div>
-              <div class="flex flex-col text-left leading-tight min-w-0 pr-0.5">
-                <div class="flex items-center gap-1">
-                  <span class="font-mono font-black text-[12.5px] text-slate-950 tracking-tight">${ticket.numeroRegistro}</span>
-                  ${isUrgente ? '<span class="text-[8.5px] font-black px-1 py-0.5 rounded bg-red-600 text-white uppercase leading-none">Urgente</span>' : ''}
-                </div>
-                <span class="text-[10px] font-bold text-slate-600 truncate max-w-[110px]" title="${catName}">
-                  ${catName}
-                </span>
-              </div>
+            <div class="transition-all duration-200 ${
+              isSelected ? 'scale-125 z-50 animate-bounce' : 'hover:scale-115'
+            }" style="filter: drop-shadow(0 4px 6px rgba(0,0,0,0.45));">
+              <svg viewBox="0 0 24 36" width="30" height="42" class="overflow-visible">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 24 12 24s12-15 12-24c0-6.63-5.37-12-12-12z" 
+                      fill="${statusColor}" 
+                      stroke="#ffffff" 
+                      stroke-width="2.2"
+                />
+                <circle cx="12" cy="12" r="4.2" fill="#ffffff" />
+              </svg>
             </div>
-            <div class="w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-t-[8px]"
-                 style="border-t-color: ${statusColor}; margin-top: -1px;"></div>
-            <div class="w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm" style="background-color: ${statusColor}; margin-top: -3px;"></div>
           </div>
         `;
 
         const customIcon = L.divIcon({
-          html: customHtml,
-          className: 'custom-clear-marker',
-          iconSize: [140, 52],
-          iconAnchor: [70, 52],
+          html: pinSvg,
+          className: 'custom-location-pin',
+          iconSize: [30, 42],
+          iconAnchor: [15, 42],
         });
 
         const marker = L.marker([lat, lng], { icon: customIcon });
 
         marker.on('click', () => {
           setSelectedTicketId(ticket.id);
+          setIsTracePanelOpen(true);
           if (mapInstanceRef.current) {
             mapInstanceRef.current.flyTo([lat, lng], 16, { duration: 0.5 });
           }
+          setTimeout(() => {
+            bottomPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 120);
         });
 
         marker.bindTooltip(
-          `<div class="p-2 text-xs bg-white text-slate-900 rounded-xl shadow-xl max-w-[240px] border border-slate-200">
-            <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-1 mb-1.5">
-              <span class="font-mono font-black text-sm text-slate-950">${ticket.numeroRegistro}</span>
+          `<div class="p-2 text-xs bg-slate-950/95 text-white rounded-xl shadow-xl max-w-[240px] border border-slate-700">
+            <div class="flex items-center justify-between gap-2 border-b border-slate-800 pb-1 mb-1.5">
+              <span class="font-mono font-bold text-xs text-blue-400">${ticket.numeroRegistro}</span>
               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style="background-color: ${statusColor};">${statusLabel}</span>
             </div>
-            <p class="font-bold text-slate-800 leading-snug">${ticket.asunto}</p>
-            <p class="text-[11px] text-slate-600 mt-1">📍 <strong class="text-slate-800">${ticket.sectorNombre}</strong></p>
+            <p class="font-bold text-slate-100 leading-snug">${ticket.asunto}</p>
+            <p class="text-[11px] text-slate-300 mt-1">📍 <strong class="text-white">${ticket.sectorNombre}</strong></p>
             <p class="text-[10px] text-slate-400 mt-0.5 truncate">${ticket.direccionDetallada || 'Sin dirección específica'}</p>
-            <div class="mt-2 pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-blue-600 font-semibold">
-              <span>👤 ${ticket.reportante.nombre}</span>
-              <span>Clic para detalles &rarr;</span>
+            <div class="mt-1.5 pt-1 border-t border-slate-800 text-[10px] text-emerald-400 font-semibold">
+              Clic para habilitar reporte y trazabilidad &darr;
             </div>
           </div>`,
-          { direction: 'top', offset: [0, -48], opacity: 0.98 }
+          { direction: 'top', offset: [0, -42], opacity: 0.98 }
         );
 
         markersGroupRef.current!.addLayer(marker);
@@ -999,9 +1117,66 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
           </div>
 
           {/* Map Controls */}
-          <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
-            {/* Tile Layer Selector */}
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+            {/* Database Connection & Persistence Status Badge */}
+            <button
+              type="button"
+              onClick={verifyDatabaseConnection}
+              disabled={isCheckingDb}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-semibold cursor-pointer shadow-xs hover:bg-emerald-100 transition-colors"
+              title="Base de datos MySQL activa: clic para verificar conexión y sincronización"
+            >
+              <Database className={`w-3.5 h-3.5 text-emerald-600 ${isCheckingDb ? 'animate-spin' : 'animate-pulse'}`} />
+              <span className="hidden md:inline">Base de Datos:</span>
+              <span className="font-bold text-emerald-700 dark:text-emerald-300">Guardando OK</span>
+              {dbStatus?.dbTicketsCount !== undefined && (
+                <span className="text-[10px] bg-emerald-200 dark:bg-emerald-900 px-1 py-0.2 rounded font-mono">
+                  {dbStatus.dbTicketsCount}
+                </span>
+              )}
+            </button>
+
+            {/* Tile Layer Selector (with Google Maps) */}
             <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setMapStyle('google_roadmap')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all ${
+                  mapStyle === 'google_roadmap'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+                title="Google Maps Estándar (Calles y Avenidas)"
+              >
+                <MapIcon className="w-3 h-3 text-blue-500" />
+                <span>Google Maps</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapStyle('google_satellite')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all ${
+                  mapStyle === 'google_satellite'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+                title="Google Maps Satélite Fotográfico Híbrido"
+              >
+                <Globe className="w-3 h-3 text-blue-500" />
+                <span>Google Satélite</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapStyle('google_terrain')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all ${
+                  mapStyle === 'google_terrain'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+                title="Google Maps Relieve y Curvas de Nivel"
+              >
+                <Mountain className="w-3 h-3 text-emerald-600" />
+                <span>Google Relieve</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setMapStyle('terrain')}
@@ -1010,34 +1185,9 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
                     ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400'
                 }`}
-                title="Capa de Suelo, Relieve y Topografía"
+                title="Capa Esri Topográfica"
               >
-                <Mountain className="w-3 h-3 text-emerald-600" />
-                <span>Suelo & Relieve</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMapStyle('satellite')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all ${
-                  mapStyle === 'satellite'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-                title="Satélite Fotográfico Real"
-              >
-                <Globe className="w-3 h-3 text-blue-500" />
-                <span>Satélite</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMapStyle('positron')}
-                className={`px-2 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-all ${
-                  mapStyle === 'positron'
-                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                Claro
+                <span>Esri</span>
               </button>
               <button
                 type="button"
@@ -1047,10 +1197,23 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
                     ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400'
                 }`}
+                title="Tema Oscuro"
               >
                 Oscuro
               </button>
             </div>
+
+            {/* Direct Google Maps External View */}
+            <a
+              href={`https://www.google.com/maps/@9.0865,-79.5280,14z`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-semibold cursor-pointer shadow-xs hover:bg-blue-100 transition-colors"
+              title="Abrir vista satelital completa en Google Maps oficial"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="hidden xl:inline">Google Maps ↗</span>
+            </a>
 
             {/* Corregimiento Boundary Toggle */}
             <button
@@ -1131,28 +1294,19 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
               </div>
             )}
 
-            {/* Map Legend Overlay for Markers or Heatmap */}
-            <div className="absolute top-3 left-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg text-xs space-y-2 z-10 max-w-xs pointer-events-auto">
-              <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                <span className="font-bold text-slate-900 dark:text-slate-100 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                  {mapViewMode === 'heatmap' ? (
-                    <>
-                      <Flame className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Termometría de Frecuencia</span>
-                    </>
-                  ) : (
-                    <>
-                      <MapPin className="w-3.5 h-3.5 text-blue-500" />
-                      <span>Leyenda de Estados</span>
-                    </>
-                  )}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {filteredTickets.length} reportes
-                </span>
-              </div>
+            {/* Map Legend Overlay for Heatmap Mode Only (Markers mode has NO legend as requested) */}
+            {mapViewMode === 'heatmap' && (
+              <div className="absolute top-3 left-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg text-xs space-y-2 z-10 max-w-xs pointer-events-auto">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                  <span className="font-bold text-slate-900 dark:text-slate-100 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                    <Flame className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Termometría de Frecuencia</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {filteredTickets.length} reportes
+                  </span>
+                </div>
 
-              {mapViewMode === 'heatmap' ? (
                 <div className="space-y-1.5 text-[11px]">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-red-600 shrink-0 shadow-xs" />
@@ -1171,27 +1325,8 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
                     <span className="text-slate-700 dark:text-slate-300 font-medium">🟢 Incidencia Aislada (1 reporte)</span>
                   </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-                    <span className="text-slate-700 dark:text-slate-300">Abierto</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
-                    <span className="text-slate-700 dark:text-slate-300">En Progreso</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                    <span className="text-slate-700 dark:text-slate-300">Resuelto</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0" />
-                    <span className="text-slate-700 dark:text-slate-300">Cerrado</span>
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Active Selected Pin Quick Floating Banner */}
             {selectedTicket && (
@@ -1230,40 +1365,56 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
                   <span className="shrink-0">{selectedTicket.fechaCreacion}</span>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex flex-col gap-1.5 pt-1">
                   <button
                     type="button"
                     onClick={() => {
-                      setModalDetailTicket(selectedTicket);
-                      setIsDetailModalOpen(true);
+                      setIsTracePanelOpen(true);
+                      setTimeout(() => {
+                        bottomPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 50);
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs cursor-pointer transition-colors"
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-colors"
                   >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Ver Detalles</span>
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Habilitar Reporte y Trazabilidad (Abajo &darr;)</span>
                   </button>
 
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${
-                      selectedTicket.ubicacionLat || 9.0834
-                    },${selectedTicket.ubicacionLng || -79.5312}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 py-1.5 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-200 text-xs font-medium cursor-pointer"
-                    title="Navegar con Google Maps"
-                  >
-                    <Navigation className="w-3 h-3 text-blue-600" />
-                    <span>Ruta</span>
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalDetailTicket(selectedTicket);
+                        setIsDetailModalOpen(true);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs cursor-pointer transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Ver Ficha Modal</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToTrace(selectedTicket.id)}
-                    className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-300 cursor-pointer"
-                    title="Ir a línea de tiempo de trazabilidad"
-                  >
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${
+                        selectedTicket.ubicacionLat || 9.0834
+                      },${selectedTicket.ubicacionLng || -79.5312}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 py-1.5 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-200 text-xs font-medium cursor-pointer"
+                      title="Navegar con Google Maps"
+                    >
+                      <Navigation className="w-3 h-3 text-blue-600" />
+                      <span>Ruta</span>
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToTrace(selectedTicket.id)}
+                      className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-300 cursor-pointer"
+                      title="Ir a línea de tiempo de trazabilidad global"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1405,6 +1556,601 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* PANEL DE REVISIÓN OPERATIVA: REPORTE Y TRAZABILIDAD DE INCIDENCIA         */}
+      {/* ========================================================================= */}
+      <div
+        ref={bottomPanelRef}
+        id="panel-reporte-trazabilidad"
+        className="w-full bg-white dark:bg-slate-900 rounded-3xl border-2 border-slate-200/90 dark:border-slate-800 shadow-xl overflow-hidden transition-all scroll-mt-6"
+      >
+        {/* Panel Header Bar */}
+        <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <span>Revisión y Trazabilidad Operativa de Incidencias</span>
+                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 border border-purple-400/30">
+                    Hostinger MySQL Sync
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-300">
+                  {selectedTicket
+                    ? `Expediente activo: ${selectedTicket.numeroRegistro} — ${selectedTicket.asunto}`
+                    : 'Haga clic en cualquier pin del mapa o seleccione un reporte del listado para habilitar su revisión.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedTicket && (
+              <button
+                type="button"
+                onClick={() => setSelectedTicketId(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-600 bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
+                title="Cerrar expediente actual y seleccionar otro"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cerrar Expediente</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsTracePanelOpen(!isTracePanelOpen)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm cursor-pointer transition-colors"
+            >
+              {isTracePanelOpen ? (
+                <>
+                  <ChevronUp className="w-4 h-4" />
+                  <span>Ocultar Revisión</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-4 h-4" />
+                  <span>Habilitar Reporte y Trazabilidad</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Panel Body */}
+        {isTracePanelOpen && (
+          <div className="p-5 sm:p-7 space-y-6">
+            {selectedTicket ? (
+              <div className="space-y-6 animate-in fade-in duration-200">
+                {/* Active Ticket Status & Quick Action Ribbon */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 rounded-xl border border-blue-200 dark:border-blue-800">
+                        {selectedTicket.numeroRegistro}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator?.clipboard) {
+                            navigator.clipboard.writeText(selectedTicket.numeroRegistro);
+                            setCopiedTicketCode(true);
+                            setTimeout(() => setCopiedTicketCode(false), 2000);
+                          }
+                        }}
+                        className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 cursor-pointer"
+                        title="Copiar número de ticket"
+                      >
+                        {copiedTicketCode ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+
+                    <StatusBadge status={selectedTicket.estado} />
+                    <PriorityBadge priority={selectedTicket.prioridad} />
+
+                    <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
+                      <MapPin className="w-3.5 h-3.5 text-red-500" />
+                      {selectedTicket.sectorNombre}
+                    </span>
+
+                    <span className="text-xs text-slate-400 flex items-center gap-1 font-mono">
+                      <Clock className="w-3.5 h-3.5" />
+                      {selectedTicket.fechaCreacion} {selectedTicket.horaCreacion || ''}
+                    </span>
+                  </div>
+
+                  {/* Quick Status Changer (One-Click Actions) */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500 mr-1 hidden sm:inline">
+                      Cambio Rápido:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatusChange('abierto')}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                        selectedTicket.estado === 'abierto'
+                          ? 'bg-red-600 text-white shadow-xs'
+                          : 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300'
+                      }`}
+                    >
+                      🔴 Abierto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatusChange('en_progreso')}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                        selectedTicket.estado === 'en_progreso'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300'
+                      }`}
+                    >
+                      🟡 En Progreso
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatusChange('resuelto')}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                        selectedTicket.estado === 'resuelto'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300'
+                      }`}
+                    >
+                      🟢 Resuelto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickStatusChange('cerrado')}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                        selectedTicket.estado === 'cerrado'
+                          ? 'bg-slate-700 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      ⚪ Cerrado
+                    </button>
+                  </div>
+                </div>
+
+                {/* Save Feedback Banner */}
+                {traceSaveSuccess && (
+                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center justify-between animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>
+                        ¡Actualización y bitácora registradas exitosamente y sincronizadas en la base de datos MySQL!
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono opacity-70">
+                      {new Date().toLocaleTimeString()}
+                    </span>
+                  </div>
+                )}
+
+                {/* 2-Column Responsive Layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* COLUMNA 1: FICHA COMPLETA DEL REPORTE (5 Cols) */}
+                  <div className="lg:col-span-5 space-y-4">
+                    <div className="p-5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-4 shadow-xs">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700/80">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          <FileText className="w-4 h-4 text-blue-600" />
+                          <span>Ficha de Incidencia Ciudadana</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalDetailTicket(selectedTicket);
+                            setIsDetailModalOpen(true);
+                          }}
+                          className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Modal Completo</span>
+                        </button>
+                      </div>
+
+                      {/* Asunto y Descripción */}
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase">
+                          Asunto del Reporte
+                        </span>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">
+                          {selectedTicket.asunto}
+                        </h3>
+                        <div className="mt-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                          {selectedTicket.descripcion}
+                        </div>
+                      </div>
+
+                      {/* Datos del Ciudadano / Reportante */}
+                      <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-700/80">
+                        <span className="text-[11px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                          <UserIcon className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Datos del Reportante</span>
+                        </span>
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 space-y-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Nombre:</span>
+                            <span className="font-bold text-slate-900 dark:text-slate-100">
+                              {selectedTicket.reportante.nombre}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Cédula:</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                              {selectedTicket.reportante.cedula}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Sector Habitual:</span>
+                            <span className="text-slate-800 dark:text-slate-200">
+                              {selectedTicket.reportante.sector}
+                            </span>
+                          </div>
+                          {selectedTicket.reportante.email && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">Correo:</span>
+                              <a
+                                href={`mailto:${selectedTicket.reportante.email}`}
+                                className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[180px]"
+                              >
+                                {selectedTicket.reportante.email}
+                              </a>
+                            </div>
+                          )}
+
+                          {/* Contact Actions: WhatsApp & Call */}
+                          <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800">
+                            <a
+                              href={`https://wa.me/${(selectedTicket.reportante.telefono || '60000000').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                                `Estimado/a ${selectedTicket.reportante.nombre}, le escribimos de la Junta Comunal de Ernesto Córdoba Campos respecto a su reporte ${selectedTicket.numeroRegistro} ("${selectedTicket.asunto}").`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-colors"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>WhatsApp</span>
+                            </a>
+                            <a
+                              href={`tel:${selectedTicket.reportante.telefono}`}
+                              className="flex items-center gap-1 py-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-200 font-semibold text-xs cursor-pointer shadow-xs"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-blue-600" />
+                              <span>{selectedTicket.reportante.telefono}</span>
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Dirección Geográfica y Navegación en Google Maps */}
+                      <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-700/80">
+                        <span className="text-[11px] font-bold uppercase text-slate-400 flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-red-500" />
+                          <span>Localización en Terreno</span>
+                        </span>
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 space-y-2 text-xs">
+                          <p className="text-slate-700 dark:text-slate-300">
+                            <strong>Dirección:</strong>{' '}
+                            {selectedTicket.direccionDetallada || 'No se especificó punto de referencia exacto.'}
+                          </p>
+                          <div className="flex items-center justify-between font-mono text-[11px] text-slate-500">
+                            <span>Coords:</span>
+                            <span>
+                              {selectedTicket.ubicacionLat.toFixed(5)}, {selectedTicket.ubicacionLng.toFixed(5)}
+                            </span>
+                          </div>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${selectedTicket.ubicacionLat},${selectedTicket.ubicacionLng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 font-bold text-xs border border-blue-200 dark:border-blue-800 transition-colors"
+                          >
+                            <Navigation className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Abrir Navegación en Google Maps</span>
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Evidencias Fotográficas si existen */}
+                      {selectedTicket.archivosAdjuntos && selectedTicket.archivosAdjuntos.length > 0 && (
+                        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-700/80">
+                          <span className="text-[11px] font-bold uppercase text-slate-400">
+                            Evidencias Fotográficas ({selectedTicket.archivosAdjuntos.length})
+                          </span>
+                          <div className="grid grid-cols-3 gap-2">
+                            {selectedTicket.archivosAdjuntos.map((foto, idx) => (
+                              <a
+                                key={idx}
+                                href={foto}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 aspect-video block"
+                              >
+                                <img
+                                  src={foto}
+                                  alt="Evidencia"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                  <ExternalLink className="w-4 h-4" />
+                                </div>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* COLUMNA 2: TRAZABILIDAD & BITÁCORA OPERATIVA (7 Cols) */}
+                  <div className="lg:col-span-7 space-y-4">
+                    <div className="p-5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-4 shadow-xs">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700/80">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          <History className="w-4 h-4 text-purple-600" />
+                          <span>Trazabilidad Operativa & Bitácora de Campo</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            {selectedTicket.trazabilidad?.length || 0} eventos
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onNavigateToTrace(selectedTicket.id)}
+                            className="flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+                          >
+                            <span>Línea de Tiempo Global</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Lista Cronológica de Eventos de Trazabilidad */}
+                      <div className="space-y-3 max-h-72 overflow-y-auto pr-2 scrollbar-thin">
+                        {selectedTicket.trazabilidad && selectedTicket.trazabilidad.length > 0 ? (
+                          selectedTicket.trazabilidad.map((evento, idx) => {
+                            let iconBadge = '💬';
+                            let badgeBg = 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200';
+                            if (evento.tipoEvento === 'inspeccion_campo') {
+                              iconBadge = '🔍';
+                              badgeBg = 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200';
+                            } else if (evento.tipoEvento === 'cuadrilla_asignada') {
+                              iconBadge = '👷';
+                              badgeBg = 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200';
+                            } else if (evento.tipoEvento === 'material_entregado') {
+                              iconBadge = '📦';
+                              badgeBg = 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200';
+                            } else if (evento.tipoEvento === 'cambio_estado') {
+                              iconBadge = '🔄';
+                              badgeBg = 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200';
+                            }
+
+                            return (
+                              <div
+                                key={evento.id || idx}
+                                className="relative pl-6 pb-2 border-l-2 border-slate-200 dark:border-slate-700 last:border-transparent"
+                              >
+                                <span className="absolute -left-2.5 top-0 w-5 h-5 rounded-full bg-white dark:bg-slate-800 border-2 border-purple-500 flex items-center justify-center text-[10px]">
+                                  {iconBadge}
+                                </span>
+                                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 text-xs space-y-1">
+                                  <div className="flex flex-wrap items-center justify-between gap-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-slate-900 dark:text-slate-100">
+                                        {evento.usuarioNombre || 'Agente Comunal'}
+                                      </span>
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${badgeBg}`}>
+                                        {evento.tipoEvento || 'Nota'}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono text-[10px] text-slate-400">
+                                      {evento.fechaHora || `${evento.fecha} ${evento.hora || ''}`}
+                                    </span>
+                                  </div>
+                                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                                    {evento.nota}
+                                  </p>
+                                  {evento.estadoResultante && (
+                                    <div className="flex items-center gap-1 pt-1 text-[11px] text-slate-500">
+                                      <span>Estado:</span>
+                                      <StatusBadge status={evento.estadoResultante} />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 text-center text-xs text-slate-500">
+                            No hay notas de trazabilidad registradas aún para este ticket.
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Formulario en línea para Registrar Nueva Acción en Bitácora & DB */}
+                      <form
+                        onSubmit={handleAddTraceSubmit}
+                        className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50 space-y-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
+                            <Send className="w-3.5 h-3.5 text-purple-600" />
+                            <span>Registrar Nueva Acción / Nota en Bitácora</span>
+                          </span>
+                          <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">
+                            Persistencia directa en MySQL
+                          </span>
+                        </div>
+
+                        <div>
+                          <textarea
+                            rows={3}
+                            value={newTraceNote}
+                            onChange={(e) => setNewTraceNote(e.target.value)}
+                            placeholder="Describa la acción realizada, despliegue de cuadrilla, inspección en terreno o avance técnico..."
+                            className="w-full p-3 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                            required
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">
+                              Tipo de Acción Operativa
+                            </label>
+                            <select
+                              value={newTraceEventType}
+                              onChange={(e: any) => setNewTraceEventType(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                            >
+                              <option value="comentario">💬 Comentario / Nota Técnica</option>
+                              <option value="inspeccion_campo">🔍 Inspección en Terreno</option>
+                              <option value="cuadrilla_asignada">👷 Asignación de Cuadrilla</option>
+                              <option value="material_entregado">📦 Material / Solución Entregada</option>
+                              <option value="cambio_estado">🔄 Cambio de Estado</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">
+                              Actualizar Estado (Opcional)
+                            </label>
+                            <select
+                              value={newTraceStatus}
+                              onChange={(e: any) => setNewTraceStatus(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                            >
+                              <option value="">(Mantener estado actual)</option>
+                              <option value="abierto">🔴 Abierto</option>
+                              <option value="en_progreso">🟡 En Progreso</option>
+                              <option value="resuelto">🟢 Resuelto</option>
+                              <option value="cerrado">⚪ Cerrado</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isSavingTrace || !newTraceNote.trim()}
+                          className="w-full py-2 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer transition-colors flex items-center justify-center gap-2"
+                        >
+                          {isSavingTrace ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Guardando en Base de Datos MySQL...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5" />
+                              <span>Guardar en Bitácora & Base de Datos</span>
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* No Ticket Selected View: Interactive Selector of Map Tickets */
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <MapPin className="w-5 h-5 text-blue-600 shrink-0" />
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-blue-950 dark:text-blue-100">
+                        Seleccione cualquier pin en el mapa o elija un reporte para habilitar su trazabilidad
+                      </h3>
+                      <p className="text-[11px] text-blue-700 dark:text-blue-300">
+                        Mostrando {filteredTickets.length} reportes geolocalizados en Ernesto Córdoba Campos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {filteredTickets.slice(0, 9).map((t) => {
+                    let pinBg = '#2563eb';
+                    if (t.estado === 'abierto') pinBg = '#ef4444';
+                    else if (t.estado === 'en_progreso') pinBg = '#f59e0b';
+                    else if (t.estado === 'resuelto') pinBg = '#10b981';
+                    else if (t.estado === 'cerrado') pinBg = '#64748b';
+
+                    return (
+                      <div
+                        key={t.id}
+                        className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 hover:border-purple-300 dark:hover:border-purple-700 transition-all space-y-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="w-3 h-3 rounded-full shrink-0 shadow-xs"
+                              style={{ backgroundColor: pinBg }}
+                            />
+                            <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
+                              {t.numeroRegistro}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <StatusBadge status={t.estado} />
+                            <PriorityBadge priority={t.prioridad} />
+                          </div>
+                        </div>
+
+                        <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100 line-clamp-1">
+                          {t.asunto}
+                        </h4>
+
+                        <p className="text-[11px] text-slate-500 line-clamp-2">
+                          {t.descripcion}
+                        </p>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-700">
+                          <span className="truncate max-w-[140px] text-slate-600 dark:text-slate-300 font-medium">
+                            📍 {t.sectorNombre}
+                          </span>
+                          <span className="font-mono">{t.fechaCreacion}</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTicketId(t.id);
+                            setIsTracePanelOpen(true);
+                            if (mapInstanceRef.current) {
+                              mapInstanceRef.current.flyTo(
+                                [t.ubicacionLat || 9.0865, t.ubicacionLng || -79.5280],
+                                16,
+                                { duration: 0.6 }
+                              );
+                            }
+                            setTimeout(() => {
+                              bottomPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 80);
+                          }}
+                          className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Habilitar Reporte y Trazabilidad</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

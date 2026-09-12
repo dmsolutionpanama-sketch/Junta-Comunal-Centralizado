@@ -398,7 +398,10 @@ const MainAppContent: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* 1. Vista General (Default Primary View) */}
+              {/* =========================================================
+                  NIVEL 1: USUARIO REGULAR (Operativo & Casos)
+              ========================================================= */}
+              {/* 1.1 Vista General */}
               {currentView === 'vista-general' && (
                 <GeneralView
                   tickets={tickets}
@@ -417,7 +420,7 @@ const MainAppContent: React.FC = () => {
                 />
               )}
 
-              {/* 2. Trazabilidad del Ticket */}
+              {/* 1.2 Trazabilidad & Progreso */}
               {currentView === 'trazabilidad' && (
                 <TraceabilityView
                   tickets={tickets}
@@ -427,7 +430,7 @@ const MainAppContent: React.FC = () => {
                 />
               )}
 
-              {/* 3. Búsqueda y Visualización Pública (Privacy Protected) */}
+              {/* 1.3 Consulta Rápida */}
               {currentView === 'busqueda-rapida' && (
                 <QuickSearchView
                   tickets={tickets}
@@ -436,12 +439,45 @@ const MainAppContent: React.FC = () => {
                 />
               )}
 
-              {/* 4. Reportes */}
+              {/* =========================================================
+                  NIVEL 2: SUPERVISOR (Supervisión & KPIs)
+              ========================================================= */}
+              {/* 2.1 Dashboard & KPIs de Gestión */}
+              {currentView === 'dashboard' && (
+                <DashboardView
+                  tickets={tickets}
+                  selectedCategoryFilter={selectedCategoryDashboard}
+                  onSelectCategoryFilter={(catId) => setSelectedCategoryDashboard(catId)}
+                />
+              )}
+
+              {/* 2.2 Reportes Estadísticos */}
               {currentView === 'reportes' && (
                 <ReportsView tickets={tickets} />
               )}
 
-              {/* 5. Mapa Cartográfico de Incidencias (Solo Administradores) */}
+              {/* 2.3 Directorio Ciudadano & WhatsApp Directo */}
+              {currentView === 'directorio-ciudadanos' && (
+                <AdminCitizensDirectoryView
+                  tickets={tickets}
+                  currentUser={currentUser}
+                  onNavigateToTrace={handleNavigateToTrace}
+                  onAddTraceNote={(tId, note, eventType, newStatus) => {
+                    handleAddTraceEvent(tId, {
+                      tipoEvento: eventType || 'comentario',
+                      responsable: currentUser?.nombre || 'Administrador',
+                      rolResponsable: currentUser?.rol || 'administrador',
+                      nota: note,
+                      estadoNuevo: newStatus,
+                    });
+                  }}
+                />
+              )}
+
+              {/* =========================================================
+                  NIVEL 3: ADMINISTRADOR (Administración Comunal & Cartografía)
+              ========================================================= */}
+              {/* 3.1 Mapa Cartográfico de Incidencias & Focos de Calor */}
               {currentView === 'mapa-reportes' && (
                 <AdminReportsMapView
                   tickets={tickets}
@@ -461,25 +497,7 @@ const MainAppContent: React.FC = () => {
                 />
               )}
 
-              {/* 6. Directorio Ciudadano & WhatsApp Directo (Solo Administradores) */}
-              {currentView === 'directorio-ciudadanos' && (
-                <AdminCitizensDirectoryView
-                  tickets={tickets}
-                  currentUser={currentUser}
-                  onNavigateToTrace={handleNavigateToTrace}
-                  onAddTraceNote={(tId, note, eventType, newStatus) => {
-                    handleAddTraceEvent(tId, {
-                      tipoEvento: eventType || 'comentario',
-                      responsable: currentUser?.nombre || 'Administrador',
-                      rolResponsable: currentUser?.rol || 'administrador',
-                      nota: note,
-                      estadoNuevo: newStatus,
-                    });
-                  }}
-                />
-              )}
-
-              {/* 7. Mantenimiento de Categorías & Roles (Superior Admin Only) */}
+              {/* 3.2 Mantenimiento de Categorías & Roles de Usuarios */}
               {currentView === 'mantenimiento-admin' && (
                 <AdminMaintenanceView
                   currentUser={currentUser}
@@ -488,33 +506,27 @@ const MainAppContent: React.FC = () => {
                 />
               )}
 
-              {/* 8. Control de Versiones del Sitio (Super Admin Only) */}
-              {currentView === 'control-versiones' && (
-                <AdminVersionControlView currentUser={currentUser} />
-              )}
-
-              {/* 6. Personalización & Diseño (Front-end & Back-end, Colores, Dimensiones y Tipografía) */}
-              {currentView === 'personalizacion-diseno' && (
-                <CustomizationSettingsView />
-              )}
-
-              {/* 7. Configuración & Base de Datos */}
+              {/* 3.3 Configuración & Base de Datos MySQL */}
               {currentView === 'configuracion' && (
                 <ConfigView onResetMockData={handleResetMockData} />
               )}
 
-              {/* 7.1 Configuración de Banner Institucional (Super Admin Only) */}
+              {/* =========================================================
+                  NIVEL 4: SUPER ADMINISTRADOR (Despacho Superior & Sitio)
+              ========================================================= */}
+              {/* 4.1 Personalización & Diseño Visual (Frontend & Backend) */}
+              {currentView === 'personalizacion-diseno' && (
+                <CustomizationSettingsView />
+              )}
+
+              {/* 4.2 Configuración de Banner Institucional (Video / Galería) */}
               {currentView === 'configuracion-banner' && (
                 <AdminBannerConfigView currentUser={currentUser} />
               )}
 
-              {/* 8. Dashboard (ALWAYS LAST OPTION in Sidebar hierarchy) */}
-              {currentView === 'dashboard' && (
-                <DashboardView
-                  tickets={tickets}
-                  selectedCategoryFilter={selectedCategoryDashboard}
-                  onSelectCategoryFilter={(catId) => setSelectedCategoryDashboard(catId)}
-                />
+              {/* 4.3 Control de Versiones del Sitio & Registro de Despliegues */}
+              {currentView === 'control-versiones' && (
+                <AdminVersionControlView currentUser={currentUser} />
               )}
             </>
           )}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Mail, AlertCircle, ArrowRight, ShieldCheck, HelpCircle, X, CheckCircle2, UserCheck, Shield, Wrench, User as UserIcon, ArrowLeft } from 'lucide-react';
+import { Lock, Mail, AlertCircle, ArrowRight, ShieldCheck, HelpCircle, X, CheckCircle2, UserCheck, Shield, Wrench, User as UserIcon, ArrowLeft, ClipboardCheck, Crown } from 'lucide-react';
 import { User, UserRole } from '../../types';
 import { ticketService } from '../../services/ticketService';
 
@@ -102,7 +102,46 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToPo
           <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 text-center">
             Perfil de Acceso (RBAC)
           </label>
-          <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700">
+            {/* 1. Usuario Regular */}
+            <button
+              type="button"
+              id="role-btn-regular"
+              onClick={() => {
+                setSelectedRole('agente');
+                setEmail('javier.castillo@alcaldia.gob.pa');
+                setPassword('Agente2025*');
+              }}
+              className={`flex flex-col items-center gap-1 py-2 px-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                selectedRole === 'agente' || selectedRole === 'usuario'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5 text-blue-500" />
+              <span className="truncate">1. Regular</span>
+            </button>
+
+            {/* 2. Supervisor */}
+            <button
+              type="button"
+              id="role-btn-supervisor"
+              onClick={() => {
+                setSelectedRole('supervisor');
+                setEmail('roberto.diaz@juntacomunal.gob.pa');
+                setPassword('Supervisor2025*');
+              }}
+              className={`flex flex-col items-center gap-1 py-2 px-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                selectedRole === 'supervisor'
+                  ? 'bg-white dark:bg-slate-900 text-cyan-600 dark:text-cyan-400 shadow-xs font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 text-cyan-500" />
+              <span className="truncate">2. Supervisor</span>
+            </button>
+
+            {/* 3. Administrador */}
             <button
               type="button"
               id="role-btn-admin"
@@ -111,50 +150,33 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, onBackToPo
                 setEmail('carlos.mendoza@alcaldia.gob.pa');
                 setPassword('Admin2025*');
               }}
-              className={`flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              className={`flex flex-col items-center gap-1 py-2 px-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
                 selectedRole === 'administrador'
-                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-semibold'
+                  ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <Shield className="w-3.5 h-3.5" />
-              <span>Admin</span>
+              <Shield className="w-3.5 h-3.5 text-purple-500" />
+              <span className="truncate">3. Admin</span>
             </button>
 
+            {/* 4. Super Administrador */}
             <button
               type="button"
-              id="role-btn-agent"
+              id="role-btn-superadmin"
               onClick={() => {
-                setSelectedRole('agente');
-                setEmail('javier.castillo@alcaldia.gob.pa');
-                setPassword('Agente2025*');
+                setSelectedRole('super_administrador');
+                setEmail('superadmin@juntacomunal.gob.pa');
+                setPassword('SuperAdmin2025*');
               }}
-              className={`flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                selectedRole === 'agente'
-                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-semibold'
+              className={`flex flex-col items-center gap-1 py-2 px-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                selectedRole === 'super_administrador'
+                  ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <Wrench className="w-3.5 h-3.5" />
-              <span>Agente/Cuadrilla</span>
-            </button>
-
-            <button
-              type="button"
-              id="role-btn-user"
-              onClick={() => {
-                setSelectedRole('usuario');
-                setEmail('maria.valdes@gmail.com');
-                setPassword('Usuario2025*');
-              }}
-              className={`flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                selectedRole === 'usuario'
-                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <UserIcon className="w-3.5 h-3.5" />
-              <span>Ciudadano</span>
+              <Crown className="w-3.5 h-3.5 text-amber-500" />
+              <span className="truncate">4. Super Admin</span>
             </button>
           </div>
         </div>

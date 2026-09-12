@@ -86,6 +86,8 @@ export interface Ticket {
   asignadoA?: string;
   departamento?: string;
   funcionarioRegistro?: string;
+  codigoRegistroEnsa?: string; // Código o número de gestión previo en ENSA para seguimiento de la Junta
+  canalNotificacionCopia?: 'email' | 'whatsapp' | 'ambos' | 'ninguno';
   datosEspecificosReporte?: Record<string, any>;
 }
 
@@ -331,5 +333,45 @@ export interface CreateTicketInput {
     url: string;
   }>;
   creadoPor?: string;
+  codigoRegistroEnsa?: string; // Código de registro previo en ENSA
+  canalNotificacionCopia?: 'email' | 'whatsapp' | 'ambos' | 'ninguno';
   datosEspecificosReporte?: Record<string, any>;
 }
+
+export interface SystemBackupConfig {
+  emailReportesHistorico: string; // Correo que recibe copia permanente de todo reporte
+  backupAutomaticoActivo: boolean;
+  horaBackupDiario: string; // '00:01'
+  ultimoBackupFechaHora?: string;
+  proximoBackupProgramado?: string;
+  totalBackupsRealizados: number;
+  proveedorEnvio: 'simulado' | 'smtp_hostinger' | 'resend_api' | 'sendgrid';
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+}
+
+export interface WhatsAppApiConfig {
+  proveedorActivo: 'meta_cloud_api' | 'n8n_webhook' | 'direct_link' | 'simulado';
+  envioAutomaticoActivo: boolean;
+  // Meta Cloud API (Oficial WhatsApp Business)
+  metaToken?: string;
+  metaPhoneNumberId?: string;
+  metaWabaId?: string;
+  metaWebhookVerifyToken?: string;
+  // n8n / Webhook Autónomo
+  n8nWebhookUrl?: string;
+  n8nTokenSeguridad?: string;
+  // Mensajes de plantilla
+  plantillaAlumbradoEnsa?: string;
+}
+
+export interface StorageStats {
+  directorioBase: string;
+  totalArchivos: number;
+  totalBytes: number;
+  tamanoFormateado: string;
+  archivosPorAnoMes: Record<string, number>;
+  permisosOk: boolean;
+}
+

@@ -78,6 +78,8 @@ export const createTicketSchema = z.object({
   reportante: reportanteSchema,
   adjuntos: z.array(adjuntoSchema).optional().default([]),
   creadoPor: z.string().optional(),
+  codigoRegistroEnsa: z.string().optional(),
+  canalNotificacionCopia: z.enum(['email', 'whatsapp', 'ambos', 'ninguno']).optional().default('ambos'),
   datosEspecificosReporte: z.record(z.string(), z.any()).optional(),
 });
 
@@ -92,6 +94,8 @@ export const updateTicketSchema = z.object({
   asignadoA: z.string().optional(),
   departamento: z.string().optional(),
   direccionDetallada: z.string().optional(),
+  codigoRegistroEnsa: z.string().optional(),
+  canalNotificacionCopia: z.enum(['email', 'whatsapp', 'ambos', 'ninguno']).optional(),
 });
 
 export const addTraceEventSchema = z.object({

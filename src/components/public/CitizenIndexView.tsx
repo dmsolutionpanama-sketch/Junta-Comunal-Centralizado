@@ -79,7 +79,10 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
   const [citizenName, setCitizenName] = useState('');
   const [citizenCedula, setCitizenCedula] = useState('');
   const [citizenPhone, setCitizenPhone] = useState('');
+  const [citizenEmail, setCitizenEmail] = useState('');
   const [citizenSector, setCitizenSector] = useState(SECTORES_RESIDENCIA[0]);
+  const [codigoRegistroEnsa, setCodigoRegistroEnsa] = useState('');
+  const [canalNotificacionCopia, setCanalNotificacionCopia] = useState<'email' | 'whatsapp' | 'ambos' | 'ninguno'>('ambos');
   const [reportAsunto, setReportAsunto] = useState('');
   const [reportCategoriaId, setReportCategoriaId] = useState(CATEGORIAS_SISTEMA[0].id);
   const [reportDescripcion, setReportDescripcion] = useState('');
@@ -185,6 +188,7 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
 
     try {
       const selectedCat = CATEGORIAS_SISTEMA.find((c) => c.id === reportCategoriaId);
+      const isAlumbrado = reportCategoriaId === 'alumbrado-electrico';
       const ticketData: CreateTicketInput = {
         asunto: reportAsunto.trim(),
         categoriaId: reportCategoriaId,
@@ -193,14 +197,20 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
         prioridad: 'media',
         descripcion: reportDescripcion.trim(),
         direccionDetallada: reportDireccion.trim(),
+        codigoRegistroEnsa: isAlumbrado && codigoRegistroEnsa.trim() ? codigoRegistroEnsa.trim() : undefined,
+        canalNotificacionCopia,
         reportante: {
           nombre: citizenName.trim(),
           cedula: citizenCedula.trim(),
           telefono: citizenPhone.trim(),
-          email: '',
-          genero: 'masculino',
+          email: citizenEmail.trim(),
+          genero: 'otro',
           edad: 35,
           sector: citizenSector,
+        },
+        datosEspecificosReporte: {
+          codigoRegistroEnsa: isAlumbrado && codigoRegistroEnsa.trim() ? codigoRegistroEnsa.trim() : undefined,
+          canalNotificacionCopia,
         },
       };
 
@@ -1125,16 +1135,29 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Teléfono de Contacto
+                          Teléfono Móvil (WhatsApp)
                         </label>
                         <input
                           type="tel"
                           value={citizenPhone}
                           onChange={(e) => setCitizenPhone(e.target.value)}
                           placeholder="6789-0000"
+                          className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Correo Electrónico (Copia digital)
+                        </label>
+                        <input
+                          type="email"
+                          value={citizenEmail}
+                          onChange={(e) => setCitizenEmail(e.target.value)}
+                          placeholder="ejemplo@correo.com"
                           className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
                         />
                       </div>
@@ -1160,9 +1183,19 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
 
                   {/* Section 2: Case Details */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                      <span>2. Detalle de la Solicitud / Incidencia</span>
-                    </h3>
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                        <span>2. Detalle de la Solicitud / Incidencia</span>
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={onOpenNewTicketModal}
+                        className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1"
+                      >
+                        <span>Abrir Formulario con Georeferencia y Fotos</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -1173,7 +1206,7 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                         required
                         value={reportAsunto}
                         onChange={(e) => setReportAsunto(e.target.value)}
-                        placeholder="Ej: Fuga de agua potable en calle principal..."
+                        placeholder="Ej: Lámpara de poste fundida o titilando..."
                         className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
                       />
                     </div>
@@ -1204,11 +1237,31 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                           type="text"
                           value={reportDireccion}
                           onChange={(e) => setReportDireccion(e.target.value)}
-                          placeholder="Frente a la tienda, poste #42..."
+                          placeholder="Frente a la casa verde, poste #42..."
                           className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
                         />
                       </div>
                     </div>
+
+                    {/* CAMPO ESPECIALIZADO ENSA SI ES ALUMBRADO ELÉCTRICO */}
+                    {reportCategoriaId === 'alumbrado-electrico' && (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl space-y-1">
+                        <label className="block text-xs font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-amber-600" />
+                          Código de Registro Previo en ENSA (Seguimiento Junta Comunal)
+                        </label>
+                        <input
+                          type="text"
+                          value={codigoRegistroEnsa}
+                          onChange={(e) => setCodigoRegistroEnsa(e.target.value)}
+                          placeholder="Ej: ENSA-2026-98124 (Opcional)"
+                          className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono"
+                        />
+                        <p className="text-[10px] text-amber-800 dark:text-amber-300">
+                          La Junta Comunal utiliza este código para presionar y fiscalizar la atención rápida de ENSA.
+                        </p>
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -1222,6 +1275,34 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                         placeholder="Describa el inconveniente con claridad para el personal de la Junta Comunal..."
                         className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium resize-none"
                       />
+                    </div>
+
+                    {/* PREFERENCIA DE NOTIFICACIÓN */}
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                        ¿Dónde desea recibir la copia de su reporte?
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        {[
+                          { id: 'email', label: 'Correo' },
+                          { id: 'whatsapp', label: 'WhatsApp' },
+                          { id: 'ambos', label: 'Ambos' },
+                          { id: 'ninguno', label: 'Solo Web' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setCanalNotificacionCopia(opt.id as any)}
+                            className={`py-1.5 px-2 rounded-lg font-semibold text-center border transition-colors ${
+                              canalNotificacionCopia === opt.id
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 

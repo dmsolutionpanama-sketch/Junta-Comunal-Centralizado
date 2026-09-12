@@ -25,8 +25,23 @@ import {
   getSystemConfigFromMySQL,
   saveSystemConfigToMySQL,
   ensureDatabaseTablesSchema,
+  persistTicketToMySQL,
+  updateTicketInMySQL,
+  addTraceEventToMySQL,
   SECTOR_COORDS_MAP,
 } from './src/server/db';
+import {
+  savePhotoFromBase64,
+  getStorageStats,
+  ensureUploadDirectories,
+} from './src/server/fileStorage';
+import {
+  loadBackupConfig,
+  persistBackupConfig,
+  sendReportHistoricalCopy,
+  executeNightlyBackup,
+  initNightlyBackupScheduler,
+} from './src/server/backupService';
 import { DEFAULT_SYSTEM_THEME } from './src/config/defaultTheme';
 import { SystemCustomTheme } from './src/types';
 import { getCategoryPrefix } from './src/utils/ticketCodeGenerator';
@@ -73,8 +88,29 @@ async function startServer() {
   const PORT = 3000;
 
   // Middlewares
-  app.use(express.json({ limit: '15mb' }));
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+  // Static storage for uploaded citizen evidence & files
+  await ensureUploadDirectories();
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+  // Ensure Database schema & attempt initial load from MySQL
+  try {
+    await ensureDatabaseTablesSchema();
+    const mySqlTickets = await queryTicketsFromMySQL();
+    if (mySqlTickets && mySqlTickets.length > 0) {
+      console.log(`✅ Loaded ${mySqlTickets.length} tickets directly from Hostinger MySQL`);
+      const existingIds = new Set(mySqlTickets.map((t) => t.id));
+      const remainingMock = ticketsDb.filter((t) => !existingIds.has(t.id));
+      ticketsDb = [...mySqlTickets, ...remainingMock];
+    }
+  } catch (err) {
+    console.warn('Could not initialize MySQL on start:', err);
+  }
+
+  // Initialize 12:01 AM Nightly Automated Backup Scheduler
+  initNightlyBackupScheduler(() => ticketsDb);
 
   // ==========================================
   // API ROUTES
@@ -1278,7 +1314,7 @@ async function startServer() {
   });
 
   // Tickets: Create New Ticket with Zod Validation
-  app.post('/api/tickets', optionalAuth, (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/tickets', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Validate request body with Zod schema
       const validation = createTicketSchema.safeParse(req.body);
@@ -1377,6 +1413,8 @@ async function startServer() {
         lugarRegistro: 'Portal Digital Comunal',
         canalIntake: 'Formulario Web Especializado',
         canalRadicacion: 'web_portal',
+        codigoRegistroEnsa: body.codigoRegistroEnsa ? String(body.codigoRegistroEnsa).trim() : undefined,
+        canalNotificacionCopia: body.canalNotificacionCopia || 'ambos',
         fechaCreacion: now.toISOString().split('T')[0],
         horaCreacion: now.toTimeString().split(' ')[0],
         fechaActualizacion: nowFormatted,
@@ -1421,6 +1459,28 @@ async function startServer() {
 
       ticketsDb.unshift(newTicket);
 
+      // Persist directly to Hostinger MySQL
+      try {
+        await persistTicketToMySQL(newTicket);
+      } catch (dbErr) {
+        console.error('Error persisting ticket to MySQL:', dbErr);
+      }
+
+      // Automated copies:
+      // 1. Permanent historical copy to administrative email (prevents data loss)
+      sendReportHistoricalCopy(newTicket).catch((e) =>
+        console.warn('Error sending historical copy to email:', e)
+      );
+
+      // 2. Citizen copy by email / WhatsApp based on preference
+      const canalCopia = newTicket.canalNotificacionCopia || 'ambos';
+      if ((canalCopia === 'email' || canalCopia === 'ambos') && newTicket.reportante.email) {
+        console.log(`[NOTIF-EMAIL] Enviando copia del ticket ${newTicket.numeroRegistro} a: ${newTicket.reportante.email}`);
+      }
+      if ((canalCopia === 'whatsapp' || canalCopia === 'ambos') && newTicket.reportante.telefono) {
+        console.log(`[NOTIF-WHATSAPP] Enviando copia del ticket ${newTicket.numeroRegistro} a WhatsApp: ${newTicket.reportante.telefono}`);
+      }
+
       return res.status(201).json({
         success: true,
         data: newTicket,
@@ -1436,7 +1496,7 @@ async function startServer() {
     '/api/tickets/:id/trace',
     authenticateToken,
     requireRole(['administrador', 'agente', 'supervisor']),
-    (req: AuthenticatedRequest, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const { id } = req.params;
 
       // Zod Validation for trace note
@@ -1488,6 +1548,13 @@ async function startServer() {
       }
       ticket.fechaActualizacion = nowStr;
 
+      // Persist trace and status change to Hostinger MySQL
+      try {
+        await addTraceEventToMySQL(ticket.id, newEvent);
+      } catch (dbErr) {
+        console.error('Error persisting trace event to MySQL:', dbErr);
+      }
+
       return res.json({
         success: true,
         data: ticket,
@@ -1501,7 +1568,7 @@ async function startServer() {
     '/api/tickets/:id',
     authenticateToken,
     requireRole(['administrador', 'agente', 'supervisor']),
-    (req: AuthenticatedRequest, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const { id } = req.params;
       const validation = updateTicketSchema.safeParse(req.body);
 
@@ -1532,7 +1599,7 @@ async function startServer() {
       ticket.fechaActualizacion = nowStr;
 
       // Add trace event for edit
-      ticket.trazabilidad.push({
+      const editTraceEvent: TrazabilidadEvento = {
         id: `tr-${Date.now()}`,
         ticketId: ticket.id,
         tipoEvento: 'comentario',
@@ -1542,7 +1609,16 @@ async function startServer() {
         nota: 'Información del ticket actualizada por funcionario.',
         estadoAnterior: ticket.estado,
         estadoNuevo: ticket.estado,
-      });
+      };
+      ticket.trazabilidad.push(editTraceEvent);
+
+      // Persist changes to Hostinger MySQL
+      try {
+        await updateTicketInMySQL(ticket.id, updates);
+        await addTraceEventToMySQL(ticket.id, editTraceEvent);
+      } catch (dbErr) {
+        console.error('Error updating ticket in MySQL:', dbErr);
+      }
 
       return res.json({
         success: true,
@@ -1551,6 +1627,116 @@ async function startServer() {
       });
     }
   );
+
+  // ==========================================
+  // FILE STORAGE & UPLOADS API
+  // ==========================================
+
+  // Upload photo organized by date and user (uploads/evidencias/YYYY/MM/DD/cedula/filename)
+  app.post('/api/uploads/photo', async (req: Request, res: Response) => {
+    try {
+      const { fileData, fileName, cedula } = req.body;
+      if (!fileData) {
+        return res.status(400).json({
+          success: false,
+          message: 'No se recibieron datos de archivo (fileData en base64 requerido).',
+        });
+      }
+
+      const cleanCedula = cedula || 'anonimo';
+      const cleanName = fileName || `evidencia_${Date.now()}.jpg`;
+
+      const saved = await savePhotoFromBase64(fileData, cleanName, cleanCedula);
+
+      return res.status(201).json({
+        success: true,
+        data: saved,
+        message: 'Archivo almacenado exitosamente en el servidor.',
+      });
+    } catch (err: any) {
+      console.error('Error saving uploaded photo:', err);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al procesar y guardar la imagen: ' + err.message,
+      });
+    }
+  });
+
+  // Storage metrics and directory structure info
+  app.get('/api/uploads/stats', async (req: Request, res: Response) => {
+    try {
+      const stats = await getStorageStats();
+      return res.json({ success: true, data: stats });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // ==========================================
+  // AUTOMATED BACKUP & EMAIL REPORTING API
+  // ==========================================
+
+  // Get backup and historic email configuration
+  app.get('/api/settings/backup', async (req: Request, res: Response) => {
+    try {
+      const config = await loadBackupConfig();
+      return res.json({ success: true, data: config });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Update backup and historic email configuration
+  app.post('/api/settings/backup', async (req: Request, res: Response) => {
+    try {
+      const updates = req.body;
+      const updated = await persistBackupConfig(updates);
+      return res.json({
+        success: true,
+        data: updated,
+        message: 'Configuración de respaldo y notificaciones por correo actualizada.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Execute backup immediately (Test or manual trigger)
+  app.post('/api/backup/execute', async (req: Request, res: Response) => {
+    try {
+      const { customEmail } = req.body;
+      const result = await executeNightlyBackup(ticketsDb, 'manual_prueba', customEmail);
+      return res.json({
+        success: true,
+        data: result,
+        message: `Respaldo ejecutado exitosamente. Enlace enviado a ${result.log.destinatarioEmail}.`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Database full synchronization trigger
+  app.post('/api/database/sync', async (req: Request, res: Response) => {
+    try {
+      await ensureDatabaseTablesSchema();
+      let syncedCount = 0;
+      for (const ticket of ticketsDb) {
+        const ok = await persistTicketToMySQL(ticket);
+        if (ok) syncedCount++;
+      }
+
+      return res.json({
+        success: true,
+        message: `Sincronización completada. ${syncedCount}/${ticketsDb.length} tickets sincronizados con Hostinger MySQL.`,
+        syncedCount,
+        totalTickets: ticketsDb.length,
+        dbStatus: getDbStatus(),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
 
   // ==========================================
   // USERS MANAGEMENT CRUD API

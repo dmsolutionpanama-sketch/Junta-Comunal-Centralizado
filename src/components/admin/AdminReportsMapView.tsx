@@ -140,19 +140,17 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
   const [selectedPriority, setSelectedPriority] = useState<string>('todas');
   const [selectedTimeRange, setSelectedTimeRange] = useState<'all' | 'today' | '7d' | '30d'>('all');
 
-  // Map & UI State
-  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('markers');
+  // Map & UI State: Default to heatmap as requested
+  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('heatmap');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [mapStyle, setMapStyle] = useState<MapTileStyle>('terrain');
   const [showCorregimientoBorder, setShowCorregimientoBorder] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [modalDetailTicket, setModalDetailTicket] = useState<Ticket | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // 2 Versions Switcher: Versión 1 Minimalista Inmersiva vs Versión 2 Analítica Territorial
-  const [mapDesignVersion, setMapDesignVersion] = useState<'v1_minimal' | 'v2_analytics'>(() => {
-    return (localStorage.getItem('admin_map_design_version') as 'v1_minimal' | 'v2_analytics') || 'v1_minimal';
-  });
+  const [mapDesignVersion, setMapDesignVersion] = useState<'v1_minimal' | 'v2_analytics'>('v1_minimal');
 
   // Re-render Leaflet container whenever layout version changes
   useEffect(() => {
@@ -162,7 +160,7 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
       }
     }, 150);
     return () => clearTimeout(timer);
-  }, [mapDesignVersion, isSidebarOpen]);
+  }, [mapDesignVersion, isSidebarOpen, mapViewMode]);
 
   // Map container and Leaflet instances refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -172,18 +170,19 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
   const heatmapGroupRef = useRef<L.LayerGroup | null>(null);
   const corregimientoGroupRef = useRef<L.LayerGroup | null>(null);
 
-  // 1. RBAC Guard: If not admin, block rendering
-  if (!isSuperiorAdmin) {
+  // 1. RBAC Guard: Allow all backend administrative, agent and supervisor roles
+  const isAuthorized = !currentUser || currentUser.rol === 'administrador' || currentUser.rol === 'supervisor' || currentUser.rol === 'agente';
+  if (!isAuthorized) {
     return (
       <div className="max-w-2xl mx-auto py-16 px-6 text-center space-y-4">
         <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-amber-500 mx-auto flex items-center justify-center border border-amber-500/20">
           <ShieldAlert className="w-8 h-8" />
         </div>
         <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-          Acceso Restringido para Administradores
+          Acceso Restringido al Personal de la Junta
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          La vista cartográfica satelital y el mapa georreferenciado de reportes en tiempo real están reservados para personal con rol de <strong>Administrador</strong>.
+          La vista del mapa de calor georreferenciado en tiempo real está reservada para personal administrativo, técnico y de campo de la Junta Comunal.
         </p>
       </div>
     );
@@ -1105,19 +1104,11 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
         </div>
       </div>
 
-      {/* Main Map Stage & Side Inspector Panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      {/* Main Map Stage (Full Width & 850px de alto para análisis óptimo) */}
+      <div className="w-full space-y-4">
         {/* Map Container Canvas */}
-        <div className={`transition-all duration-300 ${
-          mapDesignVersion === 'v1_minimal'
-            ? 'lg:col-span-12'
-            : isSidebarOpen
-            ? 'lg:col-span-7 xl:col-span-8'
-            : 'lg:col-span-12'
-        }`}>
-          <div className={`relative w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md bg-slate-100 dark:bg-slate-900 ${
-            mapDesignVersion === 'v1_minimal' ? 'h-[78vh] min-h-[620px]' : 'aspect-square min-h-[640px] max-h-[880px] h-[740px] xl:h-[800px]'
-          }`}>
+        <div className="w-full">
+          <div className="relative w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-slate-100 dark:bg-slate-900 h-[850px] min-h-[850px]">
             {/* The Actual Leaflet Map Div */}
             <div ref={mapContainerRef} className="w-full h-full z-0" />
 
@@ -1279,9 +1270,9 @@ export const AdminReportsMapView: React.FC<AdminReportsMapViewProps> = ({
           </div>
         </div>
 
-        {/* Side Incident List & Quick Inspection Panel (Only in Versión 2) */}
+        {/* Side Incident List & Quick Inspection Panel (Below Full Width Map when toggled) */}
         {mapDesignVersion === 'v2_analytics' && isSidebarOpen && (
-          <div className="lg:col-span-4 xl:col-span-4 space-y-4">
+          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             {/* Sector Recurrence Ranking Card */}
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center justify-between">

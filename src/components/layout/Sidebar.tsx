@@ -22,6 +22,7 @@ import {
   MessageSquare,
   Sliders,
   Server,
+  Flame,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
@@ -216,33 +217,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="truncate">Reportes</span>
         </button>
 
-        {/* 5. Mantenimiento de Categorías & Roles y Mapa Cartográfico (SOLO ADMINISTRADOR SUPERIOR) */}
+        {/* 5. Mapa de Calor & Incidencias (Full Width & 850px) - Activo para todo el Backend */}
+        <button
+          type="button"
+          id="nav-mapa-reportes"
+          onClick={() => onNavigate('mapa-reportes')}
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+            currentView === 'mapa-reportes'
+              ? isDarkMode
+                ? 'bg-gradient-to-r from-amber-950/70 to-red-950/70 text-amber-300 font-bold border border-red-800/60 shadow-xs'
+                : 'bg-gradient-to-r from-amber-50 to-red-50 text-red-700 font-bold border border-red-200 shadow-xs'
+              : isDarkMode
+              ? 'text-amber-300/90 hover:bg-amber-950/30 hover:text-amber-200'
+              : 'text-red-700/90 hover:bg-red-50/80 hover:text-red-800'
+          }`}
+        >
+          <div className="flex items-center gap-3 truncate">
+            <Flame className="w-4.5 h-4.5 shrink-0 text-red-500 animate-pulse" />
+            <span className="truncate">Mapa de Calor & Incidencias</span>
+          </div>
+          <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 uppercase tracking-tight">
+            Heatmap
+          </span>
+        </button>
+
+        {/* 6. Mantenimiento de Categorías & Roles y Módulos Avanzados (SOLO ADMINISTRADOR SUPERIOR) */}
         {isSuperiorAdmin && (
           <>
-            {/* Mapa de Reportes (Solo Administradores) */}
-            <button
-              type="button"
-              id="nav-mapa-reportes"
-              onClick={() => onNavigate('mapa-reportes')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
-                currentView === 'mapa-reportes'
-                  ? isDarkMode
-                    ? 'bg-purple-950/60 text-purple-300 font-semibold border border-purple-800/60'
-                    : 'bg-purple-50 text-purple-700 font-semibold border border-purple-200'
-                  : isDarkMode
-                  ? 'text-purple-300 hover:bg-purple-950/40 hover:text-purple-200'
-                  : 'text-purple-700 hover:bg-purple-50/80 hover:text-purple-800'
-              }`}
-            >
-              <div className="flex items-center gap-3 truncate">
-                <Map className="w-4.5 h-4.5 shrink-0 text-purple-600 dark:text-purple-400" />
-                <span className="truncate">Mapa de Incidencias</span>
-              </div>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 uppercase">
-                Admin
-              </span>
-            </button>
-
             {/* Directorio Ciudadano & WhatsApp (Solo Administradores) */}
             <button
               type="button"

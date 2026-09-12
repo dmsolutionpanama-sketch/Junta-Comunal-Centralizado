@@ -28,6 +28,9 @@ import {
   Trash2,
   ChevronRight,
   Info,
+  RefreshCw,
+  Mail,
+  MessageCircle,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { SECTORES_RESIDENCIA } from '../../config/sectors';
@@ -146,6 +149,9 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
   const [ubicacionLat, setUbicacionLat] = useState<number>(9.0834);
   const [ubicacionLng, setUbicacionLng] = useState<number>(-79.5312);
   const [prioridad, setPrioridad] = useState<TicketPriority>('media');
+  const [codigoRegistroEnsa, setCodigoRegistroEnsa] = useState('');
+  const [canalNotificacionCopia, setCanalNotificacionCopia] = useState<'email' | 'whatsapp' | 'ambos' | 'ninguno'>('ambos');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   // Citizen registration verification state
   const [isCheckingCitizen, setIsCheckingCitizen] = useState(false);
@@ -249,29 +255,49 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
     setError(null);
   };
 
-  // Upload photos and optional video
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload photos and optional video to server storage (uploads/evidencias/YYYY/MM/DD/cedula/filename)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newItems = Array.from(files).map((file: File, idx: number) => {
-      const isVideo = file.type.startsWith('video');
-      const isImage = file.type.startsWith('image');
-      const tipo: 'foto' | 'video' | 'documento' = isVideo ? 'video' : isImage ? 'foto' : 'documento';
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    setIsUploadingPhoto(true);
+    try {
+      const fileList: File[] = Array.from(files);
+      for (let idx = 0; idx < fileList.length; idx++) {
+        const file = fileList[idx];
+        const isVideo = file.type.startsWith('video');
+        const isImage = file.type.startsWith('image');
+        const tipo: 'foto' | 'video' | 'documento' = isVideo ? 'video' : isImage ? 'foto' : 'documento';
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
 
-      return {
-        id: `att-${Date.now()}-${idx}`,
-        nombre: file.name,
-        tipo,
-        size: `${sizeMb} MB`,
-        url: isImage
-          ? 'https://images.unsplash.com/photo-1541888946425-d0fbb18086f6?w=800&auto=format&fit=crop&q=80'
-          : 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-      };
-    });
+        // Convert to dataUrl base64
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
 
-    setAttachedFiles((prev) => [...prev, ...newItems]);
+        // Store physically on server in structured date and user directory
+        const uploadResult = await ticketService.uploadPhoto(dataUrl, file.name, cedula.trim() || 'anonimo');
+        const finalUrl = uploadResult.success && uploadResult.data?.url ? uploadResult.data.url : dataUrl;
+
+        setAttachedFiles((prev) => [
+          ...prev,
+          {
+            id: uploadResult.data?.id || `att-${Date.now()}-${idx}`,
+            nombre: file.name,
+            tipo,
+            size: `${sizeMb} MB`,
+            url: finalUrl,
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error('Error procesando archivos adjuntos:', err);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   const removeAttachment = (id: string) => {
@@ -325,6 +351,8 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
         ubicacionLat,
         ubicacionLng,
         consecutivoSeguridad: projectedSecurityConsecutive,
+        codigoRegistroEnsa: codigoRegistroEnsa.trim() || undefined,
+        canalNotificacionCopia,
         reportante: {
           nombre: nombre.trim(),
           apellido: apellido.trim(),
@@ -348,6 +376,8 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
           fechaRegistro: currentTime.fecha,
           horaRegistro: currentTime.hora,
           consecutivoSeguridad: projectedSecurityConsecutive,
+          codigoRegistroEnsa: codigoRegistroEnsa.trim() || undefined,
+          canalNotificacionCopia,
         },
       };
 
@@ -776,6 +806,29 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
                     className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium resize-none"
                   />
                 </div>
+
+                {/* CAMPO DE SEGUIMIENTO: CÓDIGO DE REGISTRO PREVIO EN ENSA */}
+                <div className="p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-600" />
+                      Código de Registro Previo en ENSA (Seguimiento Junta Comunal)
+                    </label>
+                    <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-200/60 dark:bg-amber-900/60 px-2 py-0.5 rounded-md">
+                      Opcional / Muy recomendado
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={codigoRegistroEnsa}
+                    onChange={(e) => setCodigoRegistroEnsa(e.target.value)}
+                    placeholder="Ej: ENSA-2026-89410 ó Nº de reporte telefónico previo"
+                    className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg focus:border-amber-600 focus:ring-1 focus:ring-amber-500 text-slate-900 dark:text-slate-100 font-medium font-mono"
+                  />
+                  <p className="text-[11px] text-amber-900/90 dark:text-amber-300/90 leading-relaxed">
+                    💡 <span className="font-semibold">Objetivo:</span> Si ya reportó previamente a la empresa ENSA, ingrese su código aquí. La Junta Comunal no repara directamente el tendido de alta tensión, sino que fiscaliza, presiona y da seguimiento continuo ante ENSA hasta la solución definitiva.
+                  </p>
+                </div>
               </div>
 
               {/* SECCIÓN 4: GEOREFERENCIA CON MAPA Y PIN */}
@@ -838,14 +891,24 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
                     Cargue Fotografías o Videos de la Luminaria / Poste
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Formatos admitidos: JPG, PNG, WEBP o videos cortos en MP4 / MOV (opcional)
+                    Almacenamiento estructurado en servidor por fecha y usuario ({cedula ? `Cédula: ${cedula}` : 'Anónimo'})
                   </p>
                   <label className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer shadow-xs transition-colors">
-                    <Upload className="w-4 h-4 text-blue-600" />
-                    <span>Seleccionar Archivos</span>
+                    {isUploadingPhoto ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
+                        <span>Guardando en servidor...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 text-blue-600" />
+                        <span>Seleccionar Archivos</span>
+                      </>
+                    )}
                     <input
                       type="file"
                       multiple
+                      disabled={isUploadingPhoto}
                       accept="image/*,video/*"
                       onChange={handleFileUpload}
                       className="hidden"
@@ -891,6 +954,105 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* SECCIÓN 6: CANAL DE ENVÍO DE COPIA DEL REPORTE */}
+              <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/70 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
+                    <Send className="w-4 h-4 text-emerald-600" />
+                    Envío Automático de Copia del Reporte al Ciudadano
+                  </span>
+                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    Número de Ticket: {projectedReportNum}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-emerald-900/90 dark:text-emerald-300/90">
+                  Seleccione por dónde desea recibir la confirmación oficial con el número de reporte y consecutivo para su control:
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <label
+                    className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
+                      canalNotificacionCopia === 'email'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-400'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="canalCopia"
+                      value="email"
+                      checked={canalNotificacionCopia === 'email'}
+                      onChange={() => setCanalNotificacionCopia('email')}
+                      className="hidden"
+                    />
+                    <Mail className="w-4 h-4 mb-1" />
+                    <span className="text-xs font-bold">Solo Correo</span>
+                    <span className="text-[10px] opacity-80 mt-0.5">{email ? 'Registrado' : 'Requiere email'}</span>
+                  </label>
+
+                  <label
+                    className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
+                      canalNotificacionCopia === 'whatsapp'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-400'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="canalCopia"
+                      value="whatsapp"
+                      checked={canalNotificacionCopia === 'whatsapp'}
+                      onChange={() => setCanalNotificacionCopia('whatsapp')}
+                      className="hidden"
+                    />
+                    <MessageCircle className="w-4 h-4 mb-1" />
+                    <span className="text-xs font-bold">Solo WhatsApp</span>
+                    <span className="text-[10px] opacity-80 mt-0.5">{telefono ? 'Registrado' : 'Requiere cel'}</span>
+                  </label>
+
+                  <label
+                    className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
+                      canalNotificacionCopia === 'ambos'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-400'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="canalCopia"
+                      value="ambos"
+                      checked={canalNotificacionCopia === 'ambos'}
+                      onChange={() => setCanalNotificacionCopia('ambos')}
+                      className="hidden"
+                    />
+                    <CheckCircle2 className="w-4 h-4 mb-1" />
+                    <span className="text-xs font-bold">Ambos Canales</span>
+                    <span className="text-[10px] opacity-80 mt-0.5">Email + WhatsApp</span>
+                  </label>
+
+                  <label
+                    className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center cursor-pointer transition-all ${
+                      canalNotificacionCopia === 'ninguno'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-400'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="canalCopia"
+                      value="ninguno"
+                      checked={canalNotificacionCopia === 'ninguno'}
+                      onChange={() => setCanalNotificacionCopia('ninguno')}
+                      className="hidden"
+                    />
+                    <Clock className="w-4 h-4 mb-1" />
+                    <span className="text-xs font-bold">Solo Consulta</span>
+                    <span className="text-[10px] opacity-80 mt-0.5">Por Portal Web</span>
+                  </label>
+                </div>
               </div>
 
               {/* SECCIÓN 6: TRAZABILIDAD, AUDITORÍA Y FECHA/HORA */}

@@ -22,6 +22,8 @@ import {
   MessageSquare,
   Send,
   Building,
+  Zap,
+  Share2,
 } from 'lucide-react';
 import { Ticket, TicketStatus, TrazabilidadEvento } from '../../types';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
@@ -176,8 +178,38 @@ export const TicketModalDetail: React.FC<TicketModalDetailProps> = ({
                 <span className="text-slate-400 block font-medium">Sector Residencial:</span>
                 <span className="font-semibold text-[#0066FF]">{ticket.sectorNombre}</span>
               </div>
+              {ticket.canalNotificacionCopia && (
+                <div>
+                  <span className="text-slate-400 block font-medium">Canal de Notificación / Copia:</span>
+                  <span className="font-semibold text-slate-800 uppercase text-[11px] bg-slate-100 px-2 py-0.5 rounded border">
+                    {ticket.canalNotificacionCopia}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Special ENSA Tracking Section if present */}
+          {ticket.codigoRegistroEnsa && (
+            <div className="border border-amber-300 bg-amber-50/80 rounded-xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider font-bold text-amber-900 block">
+                    Código de Registro Previo en ENSA
+                  </span>
+                  <span className="font-mono text-base font-extrabold text-amber-950">
+                    {ticket.codigoRegistroEnsa}
+                  </span>
+                </div>
+              </div>
+              <span className="text-xs font-semibold px-3 py-1 bg-amber-200/70 text-amber-900 rounded-lg border border-amber-300">
+                Seguimiento Institucional Junta Comunal
+              </span>
+            </div>
+          )}
 
           {/* Section 2: Detailed Description */}
           <div className="border border-slate-200/80 rounded-xl p-5 bg-white">

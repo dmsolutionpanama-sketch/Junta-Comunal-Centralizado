@@ -105,8 +105,7 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
     );
   };
 
-  const handleSearchSector = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSearchSector = () => {
     if (!searchQuery.trim()) return;
 
     // Search against key landmarks
@@ -141,23 +140,30 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
       {!readOnly && (
         <div className="space-y-2">
           <div className="flex flex-col sm:flex-row gap-2">
-            {/* Search Input */}
-            <form onSubmit={handleSearchSector} className="relative flex-1">
+            {/* Search Input (No nested form tag to prevent React HTML hydration errors) */}
+            <div className="relative flex-1">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearchSector();
+                  }
+                }}
                 placeholder="Buscar sector, calle o lugar (ej: Villa Zaita, Gonzalillo)..."
                 className="w-full pl-9 pr-24 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/30"
               />
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
               <button
-                type="submit"
+                type="button"
+                onClick={handleSearchSector}
                 className="absolute right-1.5 top-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium cursor-pointer"
               >
                 Buscar
               </button>
-            </form>
+            </div>
 
             {/* GPS Geolocation Button */}
             <button

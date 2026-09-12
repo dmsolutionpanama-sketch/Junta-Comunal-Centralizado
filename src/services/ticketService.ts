@@ -520,6 +520,8 @@ export const ticketService = {
           },
         ],
         datosEspecificosReporte: (ticketData as any).datosEspecificosReporte,
+        codigoRegistroEnsa: (ticketData as any).codigoRegistroEnsa || undefined,
+        canalNotificacionCopia: (ticketData as any).canalNotificacionCopia || 'ambos',
       };
 
       tickets.unshift(newTicket);
@@ -1199,6 +1201,91 @@ export const ticketService = {
       console.warn('Could not save theme settings to API', e);
     }
     return { success: false, message: 'Fallo al conectar con el servidor' };
+  },
+
+  // File Uploads organized by date and user
+  async uploadPhoto(
+    fileData: string,
+    fileName: string,
+    cedula?: string
+  ): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      const res = await fetch('/api/uploads/photo', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ fileData, fileName, cedula }),
+      });
+      const json = await res.json();
+      return json;
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  },
+
+  // Upload storage metrics
+  async getUploadStats(): Promise<{ totalFiles: number; totalSizeMb: string; uploadsRoot: string } | null> {
+    try {
+      const res = await fetch('/api/uploads/stats', { headers: getAuthHeaders() });
+      if (res.ok) {
+        const json = await res.json();
+        return json.data;
+      }
+    } catch {}
+    return null;
+  },
+
+  // Automated Backup & Email Reporting Settings
+  async getBackupSettings(): Promise<any> {
+    try {
+      const res = await fetch('/api/settings/backup', { headers: getAuthHeaders() });
+      if (res.ok) {
+        const json = await res.json();
+        return json.data;
+      }
+    } catch {}
+    return null;
+  },
+
+  async saveBackupSettings(settings: any): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      const res = await fetch('/api/settings/backup', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(settings),
+      });
+      const json = await res.json();
+      return json;
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  },
+
+  async executeBackupNow(customEmail?: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      const res = await fetch('/api/backup/execute', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ customEmail }),
+      });
+      const json = await res.json();
+      return json;
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  },
+
+  // Force MySQL Database Synchronization
+  async syncDatabaseWithMySQL(): Promise<{ success: boolean; message: string; syncedCount?: number; totalTickets?: number }> {
+    try {
+      const res = await fetch('/api/database/sync', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const json = await res.json();
+      return json;
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
   },
 };
 

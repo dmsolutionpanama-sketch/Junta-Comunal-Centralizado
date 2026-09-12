@@ -29,18 +29,25 @@ import {
   Sun,
   Moon,
   ChevronRight,
+  ChevronLeft,
   Phone,
   HelpCircle,
   ExternalLink,
   Shield,
   LayoutDashboard,
   Copy,
+  PieChart as PieChartIcon,
+  BarChart3,
+  X,
+  User,
+  Mail,
 } from 'lucide-react';
-import { Ticket, CreateTicketInput, TicketStatus, AppTheme } from '../../types';
+import { Ticket, CreateTicketInput, TicketStatus } from '../../types';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { SECTORES_RESIDENCIA } from '../../config/sectors';
 import { useTheme } from '../../context/ThemeContext';
 import { CategoryIcon } from '../common/CategoryIcon';
+import { InstitutionalBanner } from './InstitutionalBanner';
 import {
   ResponsiveContainer,
   BarChart,
@@ -51,6 +58,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from 'recharts';
 
 interface CitizenIndexViewProps {
@@ -60,22 +68,36 @@ interface CitizenIndexViewProps {
   onCreateTicketDirect: (ticketInput: CreateTicketInput) => Promise<boolean>;
 }
 
+export type CitizenTab = 'desempeno-sector' | 'estado-global' | 'listado-tickets';
+
 export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
   tickets,
   onGoToLogin,
   onOpenNewTicketModal,
   onCreateTicketDirect,
 }) => {
-  const { theme, setTheme, isDarkMode, toggleDarkMode } = useTheme();
+  const { isDarkMode, toggleDarkMode } = useTheme();
 
-  // Search & Filter State
+  // Primary active tab requested by user:
+  // 1) Desempeño por área de servicio y atención comunitaria por sector
+  // 2) Estado global (los gráficos)
+  // 3) Listado de tickets (con paginación 10, 25, 50)
+  const [activeTab, setActiveTab] = useState<CitizenTab>('desempeno-sector');
+
+  // Search & Modal State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'buscar' | 'reportar' | 'obras'>('dashboard');
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Pagination for Tickets List Tab (10, 25, 50 as requested)
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [listStatusFilter, setListStatusFilter] = useState<string>('todos');
 
   // Direct Public Report Form State
+  const [isFormOpen, setIsFormOpen] = useState(true);
   const [citizenName, setCitizenName] = useState('');
   const [citizenCedula, setCitizenCedula] = useState('');
   const [citizenPhone, setCitizenPhone] = useState('');
@@ -90,7 +112,6 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdTicketCode, setCreatedTicketCode] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [copiedCode, setCopiedCode] = useState(false);
 
   // Statistics Calculations
   const stats = useMemo(() => {
@@ -131,9 +152,18 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
     // Status Pie Data
     const statusData = [
       { name: 'Resueltos / Cerrados', value: resueltos, color: '#10B981' },
-      { name: 'En Progreso', value: enProgreso, color: '#F59E0B' },
+      { name: 'En Progreso / Cuadrilla', value: enProgreso, color: '#F59E0B' },
       { name: 'Abiertos / Por Asignar', value: abiertos, color: '#3B82F6' },
     ].filter((item) => item.value > 0);
+
+    // Category Bar Data
+    const categoryBarData = porCategoria.map((cat) => ({
+      name: cat.nombre.length > 14 ? cat.nombre.substring(0, 12) + '...' : cat.nombre,
+      fullName: cat.nombre,
+      total: cat.total,
+      resueltos: cat.resueltos,
+      color: cat.color,
+    }));
 
     return {
       total,
@@ -144,124 +174,129 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
       porCategoria,
       sectorCounts,
       statusData,
+      categoryBarData,
     };
   }, [tickets]);
 
-  // Search Results
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase().trim();
-    return tickets.filter(
-      (t) =>
-        t.numeroRegistro.toLowerCase().includes(q) ||
-        t.asunto.toLowerCase().includes(q) ||
-        t.categoriaNombre.toLowerCase().includes(q) ||
-        t.sectorNombre.toLowerCase().includes(q)
-    );
-  }, [tickets, searchQuery]);
-
-  // Filtered Community Tickets
+  // Filtered Tickets for List Tab
   const filteredTickets = useMemo(() => {
-    return tickets.filter((t) => {
-      if (selectedCategory && t.categoriaId !== selectedCategory) return false;
-      if (selectedSector && t.sectorNombre !== selectedSector) return false;
-      return true;
+    return tickets.filter((ticket) => {
+      const matchesSearch =
+        ticket.numeroRegistro.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticket.asunto.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticket.descripcion.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticket.sectorNombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticket.categoriaNombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (ticket.codigoRegistroEnsa && ticket.codigoRegistroEnsa.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const matchesCategory = !selectedCategory || ticket.categoriaId === selectedCategory;
+      const matchesSector = !selectedSector || ticket.sectorNombre === selectedSector;
+      const matchesStatus =
+        listStatusFilter === 'todos' ||
+        (listStatusFilter === 'resueltos' && (ticket.estado === 'resuelto' || ticket.estado === 'cerrado')) ||
+        (listStatusFilter === 'en_progreso' && ticket.estado === 'en_progreso') ||
+        (listStatusFilter === 'abiertos' && ticket.estado === 'abierto');
+
+      return matchesSearch && matchesCategory && matchesSector && matchesStatus;
     });
-  }, [tickets, selectedCategory, selectedSector]);
+  }, [tickets, searchQuery, selectedCategory, selectedSector, listStatusFilter]);
 
-  // Handle direct report submit
-  const handleDirectSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
+  // Pagination Math
+  const totalPages = Math.ceil(filteredTickets.length / pageSize) || 1;
+  const paginatedTickets = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredTickets.slice(startIndex, startIndex + pageSize);
+  }, [filteredTickets, currentPage, pageSize]);
 
-    if (!citizenName.trim() || !citizenCedula.trim() || !reportAsunto.trim() || !reportDescripcion.trim()) {
-      setFormError('Por favor complete los campos obligatorios (*).');
-      return;
-    }
+  // Reset page when filter or search changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory, selectedSector, listStatusFilter, pageSize]);
 
-    if (reportDescripcion.trim().length < 10) {
-      setFormError('Por favor brinde una descripción más detallada (mínimo 10 caracteres).');
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const selectedCat = CATEGORIAS_SISTEMA.find((c) => c.id === reportCategoriaId);
-      const isAlumbrado = reportCategoriaId === 'alumbrado-electrico';
-      const ticketData: CreateTicketInput = {
-        asunto: reportAsunto.trim(),
-        categoriaId: reportCategoriaId,
-        categoriaNombre: selectedCat?.nombre || 'General',
-        sectorNombre: citizenSector,
-        prioridad: 'media',
-        descripcion: reportDescripcion.trim(),
-        direccionDetallada: reportDireccion.trim(),
-        codigoRegistroEnsa: isAlumbrado && codigoRegistroEnsa.trim() ? codigoRegistroEnsa.trim() : undefined,
-        canalNotificacionCopia,
-        reportante: {
-          nombre: citizenName.trim(),
-          cedula: citizenCedula.trim(),
-          telefono: citizenPhone.trim(),
-          email: citizenEmail.trim(),
-          genero: 'otro',
-          edad: 35,
-          sector: citizenSector,
-        },
-        datosEspecificosReporte: {
-          codigoRegistroEnsa: isAlumbrado && codigoRegistroEnsa.trim() ? codigoRegistroEnsa.trim() : undefined,
-          canalNotificacionCopia,
-        },
-      };
-
-      const success = await onCreateTicketDirect(ticketData);
-      if (success) {
-        // Generate pseudo code for citizen reference
-        const generatedCode = `TK-${new Date().getFullYear()}-${String(tickets.length + 1).padStart(3, '0')}`;
-        setCreatedTicketCode(generatedCode);
-        // Reset form
-        setReportAsunto('');
-        setReportDescripcion('');
-        setReportDireccion('');
-      } else {
-        setFormError('Hubo un inconveniente al radicar la solicitud. Intente nuevamente.');
-      }
-    } catch {
-      setFormError('Error de conexión al registrar el ticket.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
+  // Copy Ticket Code helper
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
+  // Submit direct citizen report
+  const handleDirectReportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!citizenName.trim() || !citizenPhone.trim() || !reportAsunto.trim() || !reportDescripcion.trim()) {
+      setFormError('Por favor complete todos los campos obligatorios (*).');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const categoriaObj = CATEGORIAS_SISTEMA.find((c) => c.id === reportCategoriaId);
+      const numeroRegistroGenerado = `TK-${new Date().getFullYear()}-${String(tickets.length + 1).padStart(3, '0')}`;
+
+      const newTicketInput: CreateTicketInput = {
+        asunto: reportAsunto.trim(),
+        descripcion: reportDescripcion.trim(),
+        categoriaId: reportCategoriaId,
+        categoriaNombre: categoriaObj?.nombre || 'General',
+        prioridad: 'media',
+        sectorNombre: citizenSector,
+        direccionDetallada: reportDireccion.trim() || citizenSector,
+        codigoRegistroEnsa: reportCategoriaId === 'cat-1' ? codigoRegistroEnsa.trim() : undefined,
+        canalNotificacionCopia: canalNotificacionCopia,
+        reportante: {
+          nombre: citizenName.trim(),
+          cedula: citizenCedula.trim() || 'N/A',
+          telefono: citizenPhone.trim(),
+          email: citizenEmail.trim() || undefined,
+          genero: 'otro',
+          edad: 35,
+          sector: citizenSector,
+        },
+      };
+
+      const success = await onCreateTicketDirect(newTicketInput);
+      if (success) {
+        setCreatedTicketCode(numeroRegistroGenerado);
+        // Reset inputs
+        setReportAsunto('');
+        setReportDescripcion('');
+        setReportDireccion('');
+        setCodigoRegistroEnsa('');
+      } else {
+        setFormError('No se pudo radicar el ticket. Intente nuevamente.');
+      }
+    } catch (err: any) {
+      setFormError(err?.message || 'Error inesperado al radicar el reporte.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const getStatusBadge = (estado: TicketStatus) => {
     switch (estado) {
       case 'abierto':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-            Abierto / En Cola
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-tight bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+            Abierto
           </span>
         );
       case 'en_progreso':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-            En Progreso / Cuadrilla Activa
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-tight bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+            En Progreso
           </span>
         );
       case 'resuelto':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-            Resuelto / Completado
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-tight bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+            Resuelto
           </span>
         );
       case 'cerrado':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-tight bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
             Cerrado
           </span>
         );
@@ -274,83 +309,37 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
         isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
       }`}
     >
-      {/* 1. TOP CITIZEN NAVIGATION BAR */}
+      {/* 1. BANNER INSTITUCIONAL FULL-WIDTH Y AJUSTABLE EN ALTURA (VIDEO YOUTUBE O FOTO SLIDE) */}
+      <InstitutionalBanner />
+
+      {/* 2. ENCABEZADO INSTITUCIONAL CON NOMBRE */}
       <header
-        className={`sticky top-0 z-40 border-b backdrop-blur-md px-4 sm:px-8 py-3.5 flex items-center justify-between transition-colors ${
+        className={`sticky top-0 z-40 border-b backdrop-blur-md px-4 sm:px-8 py-3 flex items-center justify-between transition-colors ${
           isDarkMode
-            ? 'bg-slate-900/90 border-slate-800 text-slate-100'
-            : 'bg-white/90 border-slate-200 text-slate-900'
+            ? 'bg-slate-900/95 border-slate-800 text-slate-100'
+            : 'bg-white/95 border-slate-200 text-slate-900'
         }`}
       >
-        {/* Brand */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <ShieldCheck className="w-6 h-6" />
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+            <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-base sm:text-lg tracking-tight text-blue-600 dark:text-blue-400">
                 Junta Comunal
               </span>
-              <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900">
-                Portal Ciudadano
+              <span className="text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
+                Atención Ciudadana
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-              Transparencia y Gestión Comunitaria de Incidencias
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Gestión Comunitaria de Incidencias & Obras Comunitarias
             </p>
           </div>
         </div>
 
-        {/* Center Quick Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setActiveTab('dashboard')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              activeTab === 'dashboard'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            Dashboard Comunitario
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('buscar')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              activeTab === 'buscar'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            Consultar Ticket
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('reportar')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              activeTab === 'reportar'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            Reportar Incidencia
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('obras')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              activeTab === 'obras'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            Bitácora de Obras
-          </button>
-        </nav>
-
-        {/* Right Actions: Dark Mode & Staff Login Button */}
+        {/* Right Actions: Dark Mode & Staff Login */}
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -365,12 +354,11 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
             {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
-          {/* Primary Action: Go to Staff Backoffice Login */}
           <button
             type="button"
             id="btn-public-login"
             onClick={onGoToLogin}
-            className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm hover:shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs hover:shadow-md shadow-blue-500/20 transition-all cursor-pointer"
           >
             <LogIn className="w-4 h-4" />
             <span>Acceso Funcionarios</span>
@@ -378,205 +366,442 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
         </div>
       </header>
 
-      {/* 2. HERO BANNER WITH INSTANT TICKET SEARCH BAR */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-blue-600/10 via-transparent to-transparent dark:from-blue-950/30 dark:via-transparent pt-8 pb-10 px-4 sm:px-8 border-b border-slate-200/60 dark:border-slate-800">
-        <div className="max-w-5xl mx-auto text-center space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Portal de Consulta Pública y Transparencia de la Junta Comunal</span>
+      {/* 3. LUEGO DEL NOMBRE: SOLO EL SEARCH DE TICKETS Y EL FORM PARA CREAR REPORTE */}
+      <section className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 pb-4 space-y-6">
+        {/* A. SEARCH DE TICKETS PROMINENTE */}
+        <div className="bg-white dark:bg-slate-900 border-2 border-blue-500/30 dark:border-blue-500/40 rounded-2xl p-4 sm:p-5 shadow-lg shadow-blue-500/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Search className="w-4 h-4 text-blue-600" />
+              <span>Consulta Rápida de Tickets de Incidencia</span>
+            </label>
+            <span className="text-[11px] text-slate-400">
+              Seguimiento vecinal en tiempo real
+            </span>
           </div>
 
-          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-            Junta Comunal al Servicio de la Comunidad
-          </h1>
-
-          <p className="max-w-2xl mx-auto text-sm sm:text-base text-slate-600 dark:text-slate-300 font-normal">
-            Consulte en tiempo real el progreso de los reportes vecinales, obras de infraestructura y solicitudes ciudadanas en su sector sin necesidad de iniciar sesión.
-          </p>
-
-          {/* Live Search Input Box */}
-          <div className="max-w-2xl mx-auto pt-2">
-            <div className="relative flex items-center bg-white dark:bg-slate-900 rounded-2xl shadow-xl shadow-slate-200/60 dark:shadow-none border-2 border-blue-500/30 dark:border-blue-500/40 p-1.5 focus-within:border-blue-600 transition-all">
-              <Search className="w-5 h-5 text-blue-600 ml-3 shrink-0" />
-              <input
-                type="text"
-                id="public-ticket-search-input"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (activeTab !== 'buscar' && e.target.value.trim().length > 0) {
-                    setActiveTab('buscar');
-                  }
-                }}
-                placeholder="🔍 Ingrese código de ticket (Ej: TK-2025-001) o palabra clave..."
-                className="w-full px-3 py-2.5 text-xs sm:text-sm bg-transparent border-none outline-hidden text-slate-900 dark:text-slate-100 placeholder:text-slate-400 font-medium"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 text-xs font-bold mr-1"
-                >
-                  ✕
-                </button>
-              )}
+          <div className="relative flex items-center bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 p-1 focus-within:border-blue-600 transition-all">
+            <Search className="w-4 h-4 text-blue-600 ml-2.5 shrink-0" />
+            <input
+              type="text"
+              id="citizen-ticket-search-box"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="🔍 Ingrese código (Ej: TK-2025-001), sector, alumbrado o palabra clave..."
+              className="w-full px-3 py-2 text-xs sm:text-sm bg-transparent border-none outline-hidden text-slate-900 dark:text-slate-100 placeholder:text-slate-400 font-medium"
+            />
+            {searchQuery && (
               <button
                 type="button"
-                onClick={() => setActiveTab('buscar')}
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-xs"
+                onClick={() => setSearchQuery('')}
+                className="p-1 text-slate-400 hover:text-slate-600 text-xs font-bold mr-1"
               >
-                Buscar Estado
+                ✕
               </button>
-            </div>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2">
-              Pruebe buscando: <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold cursor-pointer" onClick={() => { setSearchQuery('TK-2025-001'); setActiveTab('buscar'); }}>TK-2025-001</span>, <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold cursor-pointer" onClick={() => { setSearchQuery('TK-2025-002'); setActiveTab('buscar'); }}>TK-2025-002</span>, <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold cursor-pointer" onClick={() => { setSearchQuery('TK-2025-004'); setActiveTab('buscar'); }}>TK-2025-004</span>
-            </p>
+            )}
           </div>
 
-          {/* Quick CTA Action Row */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          {/* Quick matches alert if searched */}
+          {searchQuery.trim() && (
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
+              <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                <span>Coincidencias encontradas ({filteredTickets.length}):</span>
+                {filteredTickets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('listado-tickets')}
+                    className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
+                  >
+                    Ver en listado completo →
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                {filteredTickets.slice(0, 4).map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelectedTicket(t)}
+                    className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 bg-white dark:bg-slate-800 flex items-center justify-between text-xs cursor-pointer transition-all shadow-xs"
+                  >
+                    <div className="truncate mr-2">
+                      <div className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {t.numeroRegistro}
+                      </div>
+                      <div className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                        {t.asunto}
+                      </div>
+                    </div>
+                    {getStatusBadge(t.estado)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* B. FORMULARIO PARA CREAR UN REPORTE DE INCIDENCIA */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center">
+                <Plus className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">
+                  Formulario de Registro de Incidencias Ciudadanas
+                </h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Radique su reporte comunitario; las cuadrillas técnicas le darán seguimiento directo
+                </p>
+              </div>
+            </div>
+
             <button
               type="button"
-              onClick={() => setActiveTab('reportar')}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition-all cursor-pointer"
+              onClick={() => setIsFormOpen(!isFormOpen)}
+              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>Reportar Nueva Incidencia (Pre-registro)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('dashboard')}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all cursor-pointer"
-            >
-              <Activity className="w-4 h-4 text-blue-600" />
-              <span>Ver Estadísticas de la Comunidad</span>
+              {isFormOpen ? 'Ocultar Formulario ▲' : 'Mostrar Formulario ▼'}
             </button>
           </div>
+
+          {/* Form Content */}
+          {isFormOpen && (
+            <div>
+              {createdTicketCode ? (
+                <div className="p-6 text-center space-y-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 animate-in fade-in">
+                  <div className="w-12 h-12 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto shadow-md">
+                    <Check className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-emerald-800 dark:text-emerald-200">
+                    ¡Reporte Radicado Exitosamente!
+                  </h3>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 max-w-md mx-auto">
+                    Su incidencia ha sido registrada en el sistema de la Junta Comunal. Conserve el siguiente código de seguimiento:
+                  </p>
+                  <div className="inline-flex items-center gap-3 px-4 py-2 bg-white dark:bg-slate-900 rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-xs">
+                    <span className="font-mono text-lg font-extrabold text-emerald-600 dark:text-emerald-400">
+                      {createdTicketCode}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copyCode(createdTicketCode)}
+                      className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-900/60 rounded-lg text-xs font-bold text-emerald-800 dark:text-emerald-200 cursor-pointer"
+                    >
+                      {copiedCode ? '¡Copiado!' : 'Copiar'}
+                    </button>
+                  </div>
+                  <div className="pt-2 flex justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatedTicketCode(null);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700"
+                    >
+                      Radicar Otro Reporte
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery(createdTicketCode);
+                        setActiveTab('listado-tickets');
+                      }}
+                      className="px-4 py-2 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 border border-emerald-300 rounded-xl text-xs font-bold cursor-pointer"
+                    >
+                      Ver en Listado de Tickets
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleDirectReportSubmit} className="space-y-4">
+                  {formError && (
+                    <div className="p-3 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{formError}</span>
+                    </div>
+                  )}
+
+                  {/* Citizen Identity Row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Nombre Completo *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej: Juan Pérez"
+                        value={citizenName}
+                        onChange={(e) => setCitizenName(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Cédula de Identidad
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: 8-765-4321"
+                        value={citizenCedula}
+                        onChange={(e) => setCitizenCedula(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Teléfono / WhatsApp *
+                      </label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="Ej: 6123-4567"
+                        value={citizenPhone}
+                        onChange={(e) => setCitizenPhone(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Correo Electrónico (Para copia)
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="vecino@ejemplo.com"
+                        value={citizenEmail}
+                        onChange={(e) => setCitizenEmail(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Sector, Category & ENSA */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Sector Residencial *
+                      </label>
+                      <select
+                        value={citizenSector}
+                        onChange={(e) => setCitizenSector(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      >
+                        {SECTORES_RESIDENCIA.map((sec) => (
+                          <option key={sec} value={sec}>
+                            {sec}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Área de Servicio / Incidencia *
+                      </label>
+                      <select
+                        value={reportCategoriaId}
+                        onChange={(e) => setReportCategoriaId(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      >
+                        {CATEGORIAS_SISTEMA.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Asunto de la Incidencia *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej: Luminaria apagada en calle 4ta"
+                        value={reportAsunto}
+                        onChange={(e) => setReportAsunto(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* If category is Alumbrado Eléctrico: ENSA Code */}
+                  {reportCategoriaId === 'cat-1' && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl space-y-1">
+                      <label className="text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Código de Registro Previo en ENSA (Opcional - Fiscalización Comunal)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={codigoRegistroEnsa}
+                        onChange={(e) => setCodigoRegistroEnsa(e.target.value)}
+                        placeholder="Ej: ENSA-2026-98124"
+                        className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono"
+                      />
+                    </div>
+                  )}
+
+                  {/* Description & Direction */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Dirección Exacta o Puntos de Referencia
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Frente a la tienda o parque, casa #42"
+                        value={reportDireccion}
+                        onChange={(e) => setReportDireccion(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Canal para recibir la Copia Digital
+                      </label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { id: 'ambos', label: 'Ambos' },
+                          { id: 'whatsapp', label: 'WhatsApp' },
+                          { id: 'email', label: 'Correo' },
+                          { id: 'ninguno', label: 'Solo Web' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setCanalNotificacionCopia(opt.id as any)}
+                            className={`py-2 text-[11px] font-bold rounded-lg border text-center transition-colors cursor-pointer ${
+                              canalNotificacionCopia === opt.id
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Descripción Detallada del Inconveniente *
+                    </label>
+                    <textarea
+                      rows={2}
+                      required
+                      value={reportDescripcion}
+                      onChange={(e) => setReportDescripcion(e.target.value)}
+                      placeholder="Describa el problema con claridad para agilizar la asignación de cuadrillas..."
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 font-medium resize-none"
+                    />
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {isSubmitting ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          <span>Radicar Incidencia Comunitaria</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* 3. MAIN BODY VIEWS */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
-        {/* MOBILE NAVIGATION TABS */}
-        <div className="flex md:hidden border-b border-slate-200 dark:border-slate-800 gap-2 overflow-x-auto pb-2 text-xs font-bold scrollbar-thin">
+      {/* 4. BOTONES TIPO PESTAÑA:
+          Pestaña 1: Desempeño por Área de Servicio y Atención Comunitaria por Sector
+          Pestaña 2: Estado Global (Gráficos)
+          Pestaña 3: Listado de Tickets (con paginación 10, 25, 50) */}
+      <section className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-12 space-y-6">
+        {/* Navigation Tabs */}
+        <div className="flex items-center justify-start sm:justify-center border-b border-slate-200 dark:border-slate-800 pb-1 overflow-x-auto gap-2 scrollbar-thin">
           <button
             type="button"
-            onClick={() => setActiveTab('dashboard')}
-            className={`px-3 py-1.5 rounded-lg whitespace-nowrap ${
-              activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+            id="tab-desempeno-sector"
+            onClick={() => setActiveTab('desempeno-sector')}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'desempeno-sector'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            Dashboard
+            <Layers className="w-4 h-4" />
+            <span>Desempeño por Área y Sector</span>
           </button>
+
           <button
             type="button"
-            onClick={() => setActiveTab('buscar')}
-            className={`px-3 py-1.5 rounded-lg whitespace-nowrap ${
-              activeTab === 'buscar' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+            id="tab-estado-global"
+            onClick={() => setActiveTab('estado-global')}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'estado-global'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            Buscar Ticket
+            <PieChartIcon className="w-4 h-4" />
+            <span>Estado Global (Gráficos)</span>
           </button>
+
           <button
             type="button"
-            onClick={() => setActiveTab('reportar')}
-            className={`px-3 py-1.5 rounded-lg whitespace-nowrap ${
-              activeTab === 'reportar' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+            id="tab-listado-tickets"
+            onClick={() => setActiveTab('listado-tickets')}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'listado-tickets'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            Reportar Incidencia
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('obras')}
-            className={`px-3 py-1.5 rounded-lg whitespace-nowrap ${
-              activeTab === 'obras' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            Obras Comunitarias
+            <FileText className="w-4 h-4" />
+            <span>Listado de Tickets ({filteredTickets.length})</span>
           </button>
         </div>
 
-        {/* -------------------------------------------------------------
-            VIEW A: COMMUNITY DASHBOARD & TRANSPARENCY METRICS
-        -------------------------------------------------------------- */}
-        {activeTab === 'dashboard' && (
+        {/* ============================================================
+            PESTAÑA 1: DESEMPEÑO POR ÁREA DE SERVICIO Y ATENCIÓN POR SECTOR
+        ============================================================ */}
+        {activeTab === 'desempeno-sector' && (
           <div className="space-y-8 animate-in fade-in duration-200">
-            {/* Top 4 Key Indicator Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Solicitudes</span>
-                  <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                </div>
-                <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100">
-                  {stats.total}
-                </p>
-                <p className="text-[11px] text-slate-400 font-normal">Radicadas por la comunidad</p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Casos Resueltos</span>
-                  <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                </div>
-                <p className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                  {stats.resueltos}
-                </p>
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                  {stats.porcentajeResueltos}% de efectividad
-                </p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">En Atención Activa</span>
-                  <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600">
-                    <Activity className="w-4 h-4" />
-                  </div>
-                </div>
-                <p className="text-2xl sm:text-3xl font-extrabold text-amber-600 dark:text-amber-400">
-                  {stats.enProgreso}
-                </p>
-                <p className="text-[11px] text-slate-400 font-normal">Cuadrillas operando en campo</p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tiempo de Atención</span>
-                  <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                </div>
-                <p className="text-2xl sm:text-3xl font-extrabold text-purple-600 dark:text-purple-400">
-                  24 - 48h
-                </p>
-                <p className="text-[11px] text-slate-400 font-normal">SLA promedio de respuesta</p>
-              </div>
-            </div>
-
-            {/* Categorías de Caso de la Junta Comunal */}
+            {/* 1. Desempeño por Área de Servicio */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-                    Desempeño por Área de Servicio Comunal
-                  </h2>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-blue-600" />
+                    <span>Desempeño por Área de Servicio Comunal</span>
+                  </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Haga clic en un área para filtrar los tickets de la comunidad
+                    Efectividad de respuesta y resolución por especialidad de cuadrilla técnica
                   </p>
                 </div>
                 {selectedCategory && (
                   <button
                     type="button"
                     onClick={() => setSelectedCategory(null)}
-                    className="text-xs text-blue-600 font-bold hover:underline"
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                   >
-                    Ver todas las áreas
+                    Mostrar todas las áreas ✕
                   </button>
                 )}
               </div>
@@ -590,21 +815,25 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                       onClick={() => setSelectedCategory(isSelected ? null : cat.id)}
                       className={`p-5 rounded-2xl border transition-all cursor-pointer ${
                         isSelected
-                          ? 'ring-2 ring-blue-600 bg-blue-50/50 dark:bg-blue-950/30 border-blue-500'
-                          : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
+                          ? 'ring-2 ring-blue-600 bg-blue-50/50 dark:bg-blue-950/30 border-blue-500 shadow-md'
+                          : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 shadow-xs'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center"
+                            className="w-10 h-10 rounded-xl flex items-center justify-center shadow-xs"
                             style={{ backgroundColor: `${cat.color}18`, color: cat.color }}
                           >
                             <CategoryIcon name={cat.icono} className="w-5 h-5" />
                           </div>
                           <div>
-                            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">{cat.nombre}</h3>
-                            <span className="text-[11px] text-slate-400">{cat.total} casos reportados</span>
+                            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                              {cat.nombre}
+                            </h4>
+                            <span className="text-[11px] text-slate-400">
+                              {cat.total} casos reportados
+                            </span>
                           </div>
                         </div>
                         <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
@@ -612,7 +841,7 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                         </span>
                       </div>
 
-                      {/* Progress bar */}
+                      {/* Progress Bar */}
                       <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-500"
@@ -623,8 +852,8 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                         />
                       </div>
 
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2 font-medium">
-                        <span>{cat.resueltos} resueltos</span>
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2.5 font-medium">
+                        <span className="text-emerald-600 font-semibold">{cat.resueltos} resueltos</span>
                         <span>{cat.pendientes} en gestión</span>
                       </div>
                     </div>
@@ -633,75 +862,128 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
               </div>
             </div>
 
-            {/* Sector Breakdown & Chart Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Sector ranking */}
-              <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-blue-600" />
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            {/* 2. Atención Comunitaria por Sector Residencial */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-blue-600" />
+                  <div>
+                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">
                       Atención Comunitaria por Sector Residencial
                     </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Balance de reportes atendidos vs radicados en cada comunidad del corregimiento
+                    </p>
                   </div>
-                  {selectedSector && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSector(null)}
-                      className="text-xs text-blue-600 font-bold hover:underline"
-                    >
-                      Limpiar filtro
-                    </button>
-                  )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {stats.sectorCounts.map((sec) => {
-                    const isSecSelected = selectedSector === sec.nombre;
-                    return (
-                      <div
-                        key={sec.nombre}
-                        onClick={() => setSelectedSector(isSecSelected ? null : sec.nombre)}
-                        className={`p-3 rounded-xl border text-xs flex items-center justify-between transition-all cursor-pointer ${
-                          isSecSelected
-                            ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/70 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{sec.nombre}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0 font-semibold">
-                          <span className="text-emerald-600">{sec.resueltos} ok</span>
-                          <span className="text-slate-300 dark:text-slate-600">/</span>
-                          <span>{sec.total} total</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                {selectedSector && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSector(null)}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Mostrar todos los sectores ✕
+                  </button>
+                )}
               </div>
 
-              {/* Status Distribution Pie Chart */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {stats.sectorCounts.map((sec) => {
+                  const isSecSelected = selectedSector === sec.nombre;
+                  return (
+                    <div
+                      key={sec.nombre}
+                      onClick={() => setSelectedSector(isSecSelected ? null : sec.nombre)}
+                      className={`p-3.5 rounded-xl border text-xs flex items-center justify-between transition-all cursor-pointer ${
+                        isSecSelected
+                          ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-700 dark:text-blue-300 font-bold shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate font-semibold">{sec.nombre}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 text-[11px] font-bold">
+                        <span className="text-emerald-600">{sec.resueltos} ok</span>
+                        <span className="text-slate-300 dark:text-slate-600">/</span>
+                        <span className="text-slate-600 dark:text-slate-300">{sec.total} total</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================
+            PESTAÑA 2: ESTADO GLOBAL (LOS GRÁFICOS)
+        ============================================================ */}
+        {activeTab === 'estado-global' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
+                <span className="text-xs font-semibold text-slate-400">Total Solicitudes</span>
+                <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                  {stats.total}
+                </p>
+                <p className="text-[11px] text-slate-400">Radicadas en la comunidad</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
+                <span className="text-xs font-semibold text-slate-400">Casos Resueltos</span>
+                <p className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+                  {stats.resueltos}
+                </p>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                  {stats.porcentajeResueltos}% tasa de cumplimiento
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
+                <span className="text-xs font-semibold text-slate-400">En Atención Activa</span>
+                <p className="text-2xl sm:text-3xl font-extrabold text-amber-600 dark:text-amber-400 font-mono">
+                  {stats.enProgreso}
+                </p>
+                <p className="text-[11px] text-slate-400">Cuadrillas operando en campo</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-1">
+                <span className="text-xs font-semibold text-slate-400">Tiempo de Atención</span>
+                <p className="text-2xl sm:text-3xl font-extrabold text-purple-600 dark:text-purple-400 font-mono">
+                  24 - 48h
+                </p>
+                <p className="text-[11px] text-slate-400">SLA promedio de respuesta</p>
+              </div>
+            </div>
+
+            {/* Charts Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Gráfico 1: Estado Global de Solicitudes (Pie/Donut Chart) */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">
-                    Estado Global de Solicitudes
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <PieChartIcon className="w-4 h-4 text-blue-600" />
+                    <span>Estado Global de Solicitudes</span>
                   </h3>
-                  <p className="text-xs text-slate-400">Distribución de casos activos vs resueltos</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Distribución porcentual de casos resueltos, en progreso y abiertos
+                  </p>
                 </div>
 
-                <div className="h-44 my-2">
+                <div className="h-64 my-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={stats.statusData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={45}
-                        outerRadius={70}
-                        paddingAngle={4}
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={5}
                         dataKey="value"
                       >
                         {stats.statusData.map((entry, index) => (
@@ -713,736 +995,434 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                           backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
                           borderColor: isDarkMode ? '#334155' : '#e2e8f0',
                           borderRadius: '0.75rem',
-                          fontSize: '11px',
+                          fontSize: '12px',
                         }}
                       />
+                      <Legend />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
 
-                <div className="space-y-1 text-xs">
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
                   {stats.statusData.map((item) => (
-                    <div key={item.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-slate-600 dark:text-slate-400 font-medium">{item.name}</span>
-                      </div>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{item.value}</span>
+                    <div key={item.name} className="space-y-0.5">
+                      <span className="text-[11px] text-slate-400 block truncate">{item.name}</span>
+                      <span className="font-extrabold text-sm font-mono" style={{ color: item.color }}>
+                        {item.value} ({stats.total > 0 ? Math.round((item.value / stats.total) * 100) : 0}%)
+                      </span>
                     </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gráfico 2: Desempeño por Área de Servicio (Bar Chart) */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-emerald-600" />
+                    <span>Volumen y Casos Resueltos por Área</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Comparativo entre reportes recibidos y casos concluidos satisfactoriamente
+                  </p>
+                </div>
+
+                <div className="h-64 my-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.categoryBarData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                      <XAxis
+                        dataKey="name"
+                        stroke={isDarkMode ? '#64748b' : '#94a3b8'}
+                        fontSize={10}
+                        interval={0}
+                        angle={-15}
+                        textAnchor="end"
+                      />
+                      <YAxis stroke={isDarkMode ? '#64748b' : '#94a3b8'} fontSize={10} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
+                          borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                          borderRadius: '0.75rem',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Bar dataKey="total" name="Total Reportes" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="resueltos" name="Resueltos" fill="#10B981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Total recibidos
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Resueltos
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================
+            PESTAÑA 3: LISTADO DE TICKETS (CON PAGINACIÓN 10, 25, 50)
+        ============================================================ */}
+        {activeTab === 'listado-tickets' && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4 animate-in fade-in duration-200">
+            {/* Table Filter and Pagination Controls Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>Listado de Tickets Comunitarios ({filteredTickets.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Datos de seguimiento público con información de privacidad protegida
+                </p>
+              </div>
+
+              {/* Status filter chips & Page Size Selector (10, 25, 50 as requested) */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Status Filter */}
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-semibold">
+                  {[
+                    { id: 'todos', label: 'Todos' },
+                    { id: 'abiertos', label: 'Abiertos' },
+                    { id: 'en_progreso', label: 'En Progreso' },
+                    { id: 'resueltos', label: 'Resueltos' },
+                  ].map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => setListStatusFilter(st.id)}
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        listStatusFilter === st.id
+                          ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Page Size Selector: 10, 25, 50 como máximo */}
+                <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-xl text-xs font-bold">
+                  <span className="text-slate-400 text-[11px]">Mostrar:</span>
+                  {[10, 25, 50].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => setPageSize(size)}
+                      className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                        pageSize === size
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {size}
+                    </button>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* Recent Community Tickets List (Public Overview) */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-blue-600" />
-                    Incidencias Comunitarias en Seguimiento ({filteredTickets.length})
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Datos públicos de gestión vecinal (información personal protegida por ley)
-                  </p>
-                </div>
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase font-semibold text-[10px]">
+                    <th className="py-2.5 px-3">Código</th>
+                    <th className="py-2.5 px-3">Asunto / Incidencia</th>
+                    <th className="py-2.5 px-3">Categoría</th>
+                    <th className="py-2.5 px-3">Sector</th>
+                    <th className="py-2.5 px-3">Fecha</th>
+                    <th className="py-2.5 px-3">Estado</th>
+                    <th className="py-2.5 px-3 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {paginatedTickets.map((ticket) => (
+                    <tr
+                      key={ticket.id}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="py-3 px-3 font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {ticket.numeroRegistro}
+                      </td>
+                      <td className="py-3 px-3 font-medium text-slate-800 dark:text-slate-200 max-w-xs truncate">
+                        {ticket.asunto}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                          {ticket.categoriaNombre}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 dark:text-slate-400">
+                        {ticket.sectorNombre}
+                      </td>
+                      <td className="py-3 px-3 text-slate-400 text-[11px]">
+                        {ticket.fechaCreacion}
+                      </td>
+                      <td className="py-3 px-3">{getStatusBadge(ticket.estado)}</td>
+                      <td className="py-3 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTicket(ticket)}
+                          className="px-3 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                        >
+                          Ver Detalle
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {paginatedTickets.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
+                        No se encontraron tickets con los filtros y búsqueda especificados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls (Páginas, Anterior, Siguiente) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+              <div className="text-slate-400 text-[11px]">
+                Mostrando {Math.min((currentPage - 1) * pageSize + 1, filteredTickets.length)} -{' '}
+                {Math.min(currentPage * pageSize, filteredTickets.length)} de {filteredTickets.length} registros
+                (Página {currentPage} de {totalPages})
+              </div>
+
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('buscar')}
-                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
                 >
-                  <span>Búsqueda avanzada</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Anterior</span>
+                </button>
+
+                {/* Page Number Buttons */}
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  {totalPages > 5 && <span className="text-slate-400 px-1">...</span>}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <span>Siguiente</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase font-semibold text-[10px]">
-                      <th className="py-2.5 px-3">Código</th>
-                      <th className="py-2.5 px-3">Asunto / Incidencia</th>
-                      <th className="py-2.5 px-3">Categoría</th>
-                      <th className="py-2.5 px-3">Sector</th>
-                      <th className="py-2.5 px-3">Fecha</th>
-                      <th className="py-2.5 px-3">Estado</th>
-                      <th className="py-2.5 px-3 text-right">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {filteredTickets.slice(0, 8).map((ticket) => (
-                      <tr
-                        key={ticket.id}
-                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                      >
-                        <td className="py-3 px-3 font-mono font-bold text-blue-600 dark:text-blue-400">
-                          {ticket.numeroRegistro}
-                        </td>
-                        <td className="py-3 px-3 font-medium text-slate-800 dark:text-slate-200 max-w-xs truncate">
-                          {ticket.asunto}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300">
-                            {ticket.categoriaNombre}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-slate-500 dark:text-slate-400">
-                          {ticket.sectorNombre}
-                        </td>
-                        <td className="py-3 px-3 text-slate-400 text-[11px]">
-                          {ticket.fechaCreacion}
-                        </td>
-                        <td className="py-3 px-3">{getStatusBadge(ticket.estado)}</td>
-                        <td className="py-3 px-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedTicket(ticket);
-                              setActiveTab('buscar');
-                              setSearchQuery(ticket.numeroRegistro);
-                            }}
-                            className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/60 rounded-lg transition-colors cursor-pointer"
-                          >
-                            Ver Detalle
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
         )}
+      </section>
 
-        {/* -------------------------------------------------------------
-            VIEW B: PUBLIC TICKET SEARCH & TIMELINE TRACKING (SIN LOGIN)
-        -------------------------------------------------------------- */}
-        {activeTab === 'buscar' && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <Search className="w-5 h-5 text-blue-600" />
-                    Búsqueda y Seguimiento Directo de Tickets
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Ingrese el número de radicado para ver la bitácora de avances y tiempo estimado de resolución
-                  </p>
-                </div>
-
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Ej: TK-2025-001 o Luminaria..."
-                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Live Search Matches List */}
-              {searchQuery.trim() && (
-                <div className="space-y-2 pt-2">
-                  <p className="text-xs font-semibold text-slate-400">
-                    Resultados coincidentes ({searchResults.length}):
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {searchResults.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => setSelectedTicket(t)}
-                        className={`p-4 rounded-xl border text-xs transition-all cursor-pointer ${
-                          selectedTicket?.id === t.id
-                            ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 shadow-xs'
-                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-blue-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                            {t.numeroRegistro}
-                          </span>
-                          {getStatusBadge(t.estado)}
-                        </div>
-                        <h4 className="font-bold text-slate-900 dark:text-slate-100 text-xs mb-1 truncate">
-                          {t.asunto}
-                        </h4>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                          <span>{t.sectorNombre}</span>
-                          <span>{t.fechaCreacion}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Selected Ticket Public Detail Card */}
-            {selectedTicket ? (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-md space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-                {/* Header of Detail */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-sm font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-lg border border-blue-100 dark:border-blue-900">
-                        {selectedTicket.numeroRegistro}
-                      </span>
-                      {getStatusBadge(selectedTicket.estado)}
-                    </div>
-                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-                      {selectedTicket.asunto}
-                    </h2>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => copyCode(selectedTicket.numeroRegistro)}
-                    className="self-start sm:self-auto px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
-                    <span>{copiedCode ? '¡Copiado!' : 'Copiar Código'}</span>
-                  </button>
-                </div>
-
-                {/* 4-Step Resolution Progress Indicator */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Etapa de Atención del Caso
-                  </h4>
-                  <div className="grid grid-cols-4 gap-2 pt-1">
-                    {[
-                      { step: 1, label: '1. Radicado', done: true },
-                      {
-                        step: 2,
-                        label: '2. En Cuadrilla',
-                        done: selectedTicket.estado !== 'abierto',
-                      },
-                      {
-                        step: 3,
-                        label: '3. En Ejecución',
-                        done: selectedTicket.estado === 'en_progreso' || selectedTicket.estado === 'resuelto' || selectedTicket.estado === 'cerrado',
-                      },
-                      {
-                        step: 4,
-                        label: '4. Resuelto',
-                        done: selectedTicket.estado === 'resuelto' || selectedTicket.estado === 'cerrado',
-                      },
-                    ].map((step) => (
-                      <div
-                        key={step.step}
-                        className={`p-2.5 rounded-xl border text-center transition-all ${
-                          step.done
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold'
-                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-400 font-medium'
-                        }`}
-                      >
-                        <div className="text-xs">{step.label}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Technical Overview Info */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-700 text-xs">
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Categoría de Servicio:</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {selectedTicket.categoriaNombre}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Sector / Ubicación:</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {selectedTicket.sectorNombre}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[11px]">Fecha de Radicación:</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {selectedTicket.fechaCreacion} ({selectedTicket.horaCreacion})
-                    </span>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Descripción del Problema Reportado
-                  </h4>
-                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50/60 dark:bg-slate-800/30 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                    {selectedTicket.descripcion}
-                  </p>
-                </div>
-
-                {/* Public Traceability Timeline Log */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-blue-600" />
-                    Bitácora Pública de Avances y Respuestas de la Junta Comunal
-                  </h4>
-
-                  {selectedTicket.historial && selectedTicket.historial.length > 0 ? (
-                    <div className="space-y-2.5">
-                      {selectedTicket.historial.map((event) => (
-                        <div
-                          key={event.id}
-                          className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs flex items-start gap-3"
-                        >
-                          <div className="w-2 h-2 rounded-full bg-blue-600 mt-1.5 shrink-0" />
-                          <div className="flex-1 space-y-0.5">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="font-bold text-slate-800 dark:text-slate-200">
-                                {event.responsable} <span className="text-slate-400 font-normal">({event.rolResponsable || 'Junta Comunal'})</span>
-                              </span>
-                              <span className="text-slate-400 font-mono">
-                                {event.fecha} {event.hora}
-                              </span>
-                            </div>
-                            <p className="text-slate-600 dark:text-slate-300">{event.nota}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 italic">No hay notas de cuadrilla adicionales aún.</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="p-10 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
-                <Search className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                  Consulte un Ticket para ver su Línea de Tiempo
-                </h3>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
-                  Ingrese el código asignado a su solicitud en la barra superior o seleccione uno de los casos públicos listados.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* -------------------------------------------------------------
-            VIEW C: DIRECT CITIZEN PRE-REGISTRATION / NEW INCIDENT FORM
-        -------------------------------------------------------------- */}
-        {activeTab === 'reportar' && (
-          <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-              {/* Header */}
-              <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-xs font-bold mb-2">
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Pre-Registro y Radicación Ciudadana</span>
-                </div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Reportar una Incidencia o Solicitud a la Junta Comunal
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Complete este formulario para que la cuadrilla correspondiente sea despachada a su sector. Recibirá un código de seguimiento inmediato.
-                </p>
-              </div>
-
-              {/* Confirmation screen upon successful submission */}
-              {createdTicketCode ? (
-                <div className="p-6 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-center space-y-4">
-                  <div className="w-14 h-14 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-emerald-600/30">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-emerald-900 dark:text-emerald-200">
-                      ¡Solicitud Radicada Exitosamente!
-                    </h3>
-                    <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
-                      Su reporte ha sido recibido por el equipo técnico de la Junta Comunal.
-                    </p>
-                  </div>
-
-                  <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-800 inline-flex flex-col items-center">
-                    <span className="text-xs text-slate-400 font-semibold mb-1">Su Código de Seguimiento:</span>
-                    <span className="font-mono text-xl font-extrabold text-blue-600 dark:text-blue-400">
-                      {createdTicketCode}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => copyCode(createdTicketCode)}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                    >
-                      {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedCode ? '¡Copiado!' : 'Copiar Código'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchQuery(createdTicketCode);
-                        setActiveTab('buscar');
-                        setCreatedTicketCode(null);
-                      }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
-                    >
-                      Rastrear Estado Ahora
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleDirectSubmit} className="space-y-6">
-                  {formError && (
-                    <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2 font-semibold">
-                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-                      <span>{formError}</span>
-                    </div>
-                  )}
-
-                  {/* Section 1: Citizen info */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                      <span>1. Datos del Solicitante / Residente</span>
-                    </h3>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Nombre Completo *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={citizenName}
-                          onChange={(e) => setCitizenName(e.target.value)}
-                          placeholder="Ej: Ana María Morales"
-                          className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Cédula / Documento de Identidad *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={citizenCedula}
-                          onChange={(e) => setCitizenCedula(e.target.value)}
-                          placeholder="Ej: 8-765-4321"
-                          className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Teléfono Móvil (WhatsApp)
-                        </label>
-                        <input
-                          type="tel"
-                          value={citizenPhone}
-                          onChange={(e) => setCitizenPhone(e.target.value)}
-                          placeholder="6789-0000"
-                          className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Correo Electrónico (Copia digital)
-                        </label>
-                        <input
-                          type="email"
-                          value={citizenEmail}
-                          onChange={(e) => setCitizenEmail(e.target.value)}
-                          placeholder="ejemplo@correo.com"
-                          className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Sector de Residencia *
-                        </label>
-                        <select
-                          value={citizenSector}
-                          onChange={(e) => setCitizenSector(e.target.value)}
-                          className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                        >
-                          {SECTORES_RESIDENCIA.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Section 2: Case Details */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                        <span>2. Detalle de la Solicitud / Incidencia</span>
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={onOpenNewTicketModal}
-                        className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1"
-                      >
-                        <span>Abrir Formulario con Georeferencia y Fotos</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Asunto Principal *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={reportAsunto}
-                        onChange={(e) => setReportAsunto(e.target.value)}
-                        placeholder="Ej: Lámpara de poste fundida o titilando..."
-                        className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Área / Categoría de la Incidencia *
-                        </label>
-                        <select
-                          value={reportCategoriaId}
-                          onChange={(e) => setReportCategoriaId(e.target.value)}
-                          className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                        >
-                          {CATEGORIAS_SISTEMA.map((cat) => (
-                            <option key={cat.id} value={cat.id}>
-                              {cat.nombre} (SLA: {cat.slaHoras}h)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Punto de Referencia / Dirección Exacta
-                        </label>
-                        <input
-                          type="text"
-                          value={reportDireccion}
-                          onChange={(e) => setReportDireccion(e.target.value)}
-                          placeholder="Frente a la casa verde, poste #42..."
-                          className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium"
-                        />
-                      </div>
-                    </div>
-
-                    {/* CAMPO ESPECIALIZADO ENSA SI ES ALUMBRADO ELÉCTRICO */}
-                    {reportCategoriaId === 'alumbrado-electrico' && (
-                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl space-y-1">
-                        <label className="block text-xs font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
-                          <Zap className="w-3.5 h-3.5 text-amber-600" />
-                          Código de Registro Previo en ENSA (Seguimiento Junta Comunal)
-                        </label>
-                        <input
-                          type="text"
-                          value={codigoRegistroEnsa}
-                          onChange={(e) => setCodigoRegistroEnsa(e.target.value)}
-                          placeholder="Ej: ENSA-2026-98124 (Opcional)"
-                          className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono"
-                        />
-                        <p className="text-[10px] text-amber-800 dark:text-amber-300">
-                          La Junta Comunal utiliza este código para presionar y fiscalizar la atención rápida de ENSA.
-                        </p>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Descripción Detallada *
-                      </label>
-                      <textarea
-                        rows={3}
-                        required
-                        value={reportDescripcion}
-                        onChange={(e) => setReportDescripcion(e.target.value)}
-                        placeholder="Describa el inconveniente con claridad para el personal de la Junta Comunal..."
-                        className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:border-blue-600 text-slate-900 dark:text-slate-100 font-medium resize-none"
-                      />
-                    </div>
-
-                    {/* PREFERENCIA DE NOTIFICACIÓN */}
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
-                      <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                        ¿Dónde desea recibir la copia de su reporte?
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                        {[
-                          { id: 'email', label: 'Correo' },
-                          { id: 'whatsapp', label: 'WhatsApp' },
-                          { id: 'ambos', label: 'Ambos' },
-                          { id: 'ninguno', label: 'Solo Web' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => setCanalNotificacionCopia(opt.id as any)}
-                            className={`py-1.5 px-2 rounded-lg font-semibold text-center border transition-colors ${
-                              canalNotificacionCopia === opt.id
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Submit button */}
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
-                    >
-                      {isSubmitting ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <Plus className="w-4 h-4" />
-                          <span>Radicar Solicitud a la Junta Comunal</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* -------------------------------------------------------------
-            VIEW D: TRANSPARENCY & COMMUNITY WORKS FEED ("BITÁCORA DE OBRAS")
-        -------------------------------------------------------------- */}
-        {activeTab === 'obras' && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* 5. MODAL DE DETALLE DE TICKET CON TRAZABILIDAD */}
+      {selectedTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 max-h-[90vh] overflow-y-auto scrollbar-thin">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-blue-600" />
-                  Bitácora Pública de Obras e Intervenciones Comunitarias
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Registro fotográfico y bitácora de cuadrillas activas en los diferentes sectores
-                </p>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-mono text-sm font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-lg border border-blue-100 dark:border-blue-900">
+                    {selectedTicket.numeroRegistro}
+                  </span>
+                  {getStatusBadge(selectedTicket.estado)}
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  {selectedTicket.asunto}
+                </h3>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-bold border border-emerald-200 dark:border-emerald-800">
-                  {stats.resueltos} Obras Culminadas
+              <button
+                type="button"
+                onClick={() => setSelectedTicket(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Stages */}
+            <div className="space-y-1.5">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Etapa de Atención de la Junta Comunal
+              </h4>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: '1. Radicado', done: true },
+                  { label: '2. En Cuadrilla', done: selectedTicket.estado !== 'abierto' },
+                  {
+                    label: '3. En Ejecución',
+                    done: selectedTicket.estado === 'en_progreso' || selectedTicket.estado === 'resuelto' || selectedTicket.estado === 'cerrado',
+                  },
+                  {
+                    label: '4. Resuelto',
+                    done: selectedTicket.estado === 'resuelto' || selectedTicket.estado === 'cerrado',
+                  },
+                ].map((st, i) => (
+                  <div
+                    key={i}
+                    className={`py-2 px-1 text-center rounded-xl border text-[11px] font-bold ${
+                      st.done
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    {st.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Technical Metadata */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-700 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[11px]">Área:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {selectedTicket.categoriaNombre}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Sector Residencial:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {selectedTicket.sectorNombre}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Fecha Radicación:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {selectedTicket.fechaCreacion} ({selectedTicket.horaCreacion})
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {tickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-                >
-                  <div>
-                    {ticket.adjuntos && ticket.adjuntos.length > 0 ? (
-                      <div className="h-40 bg-slate-100 dark:bg-slate-800 relative overflow-hidden">
-                        <img
-                          src={ticket.adjuntos[0].url}
-                          alt={ticket.asunto}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute top-2.5 right-2.5">
-                          {getStatusBadge(ticket.estado)}
+            {/* ENSA Code if present */}
+            {selectedTicket.codigoRegistroEnsa && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs flex items-center justify-between">
+                <span className="font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-amber-600" />
+                  Código de Fiscalización Previa ENSA:
+                </span>
+                <span className="font-mono font-extrabold text-amber-900 dark:text-amber-100 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded">
+                  {selectedTicket.codigoRegistroEnsa}
+                </span>
+              </div>
+            )}
+
+            {/* Description */}
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Descripción
+              </span>
+              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                {selectedTicket.descripcion}
+              </p>
+            </div>
+
+            {/* Traceability Events Log */}
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-blue-600" />
+                Bitácora de Trazabilidad y Avances Comunitarios
+              </span>
+
+              {selectedTicket.historial && selectedTicket.historial.length > 0 ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {selectedTicket.historial.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs flex items-start gap-2.5"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-blue-600 mt-1 shrink-0" />
+                      <div className="flex-1 space-y-0.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">
+                            {ev.responsable}
+                          </span>
+                          <span className="text-slate-400">{ev.fecha} {ev.hora}</span>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="h-32 bg-gradient-to-br from-blue-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 p-4 flex items-start justify-between">
-                        <div className="p-2 rounded-xl bg-white dark:bg-slate-800 text-blue-600 shadow-xs">
-                          <Building2 className="w-5 h-5" />
-                        </div>
-                        {getStatusBadge(ticket.estado)}
-                      </div>
-                    )}
-
-                    <div className="p-5 space-y-2.5">
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium">
-                        <span className="font-mono text-blue-600 dark:text-blue-400 font-bold">
-                          {ticket.numeroRegistro}
-                        </span>
-                        <span>{ticket.fechaCreacion}</span>
-                      </div>
-
-                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-2">
-                        {ticket.asunto}
-                      </h3>
-
-                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed">
-                        {ticket.descripcion}
-                      </p>
-
-                      <div className="pt-2 flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                          {ticket.sectorNombre}
-                        </span>
-                        <span className="text-blue-600 dark:text-blue-400">{ticket.categoriaNombre}</span>
+                        <p className="text-slate-600 dark:text-slate-300 text-[11px]">{ev.nota}</p>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="p-4 bg-slate-50/70 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedTicket(ticket);
-                        setSearchQuery(ticket.numeroRegistro);
-                        setActiveTab('buscar');
-                      }}
-                      className="w-full py-1.5 px-3 bg-white dark:bg-slate-800 hover:bg-blue-50 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer text-center"
-                    >
-                      Ver Trazabilidad Completa
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <p className="text-xs text-slate-400 italic">No hay notas de cuadrilla registradas aún.</p>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => copyCode(selectedTicket.numeroRegistro)}
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
+              >
+                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedCode ? '¡Copiado!' : 'Copiar Código'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTicket(null)}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Cerrar Detalle
+              </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
-      {/* 4. MUNICIPAL FOOTER */}
-      <footer className="mt-12 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-8 px-4 sm:px-8 text-xs text-slate-500 dark:text-slate-400 transition-colors">
+      {/* 6. PIE DE PÁGINA MUNICIPAL */}
+      <footer className="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-6 px-4 sm:px-8 text-xs text-slate-500 dark:text-slate-400 transition-colors">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-blue-600" />
+            <ShieldCheck className="w-4 h-4 text-blue-600" />
             <span className="font-bold text-slate-800 dark:text-slate-200">
-              Junta Comunal — Gestión Ciudadana y Transparencia
+              Junta Comunal — Portal de Transparencia e Incidencias Vecinales
             </span>
           </div>
           <div className="flex items-center gap-4 text-[11px]">
-            <span>Atención: Lun a Vie 8:00 AM - 4:00 PM</span>
+            <span>Atención Ciudadana: Lun - Vie 8:00 AM a 4:00 PM</span>
             <span>•</span>
             <button
               type="button"
               onClick={onGoToLogin}
               className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
             >
-              Acceso a Intranet / Funcionarios
+              Portal Administrativo de Funcionarios
             </button>
           </div>
         </div>

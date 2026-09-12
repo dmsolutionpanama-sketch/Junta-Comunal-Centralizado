@@ -23,6 +23,8 @@ import {
   Sliders,
   Server,
   Flame,
+  GitBranch,
+  History,
 } from 'lucide-react';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
 import { useTheme } from '../../context/ThemeContext';
@@ -38,6 +40,7 @@ export type MainNavView =
   | 'personalizacion-diseno'
   | 'configuracion'
   | 'mantenimiento-admin'
+  | 'control-versiones'
   | 'dashboard';
 
 interface SidebarProps {
@@ -289,6 +292,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 uppercase">
                 Admin
+              </span>
+            </button>
+
+            {/* Control de Versiones del Sitio (Solo Super Administrador) */}
+            <button
+              type="button"
+              id="nav-control-versiones"
+              onClick={() => onNavigate('control-versiones')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+                currentView === 'control-versiones'
+                  ? isDarkMode
+                    ? 'bg-indigo-950/60 text-indigo-300 font-semibold border border-indigo-800/60'
+                    : 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200'
+                  : isDarkMode
+                  ? 'text-indigo-300 hover:bg-indigo-950/40 hover:text-indigo-200'
+                  : 'text-indigo-700 hover:bg-indigo-50/80 hover:text-indigo-800'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <History className="w-4.5 h-4.5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                <span className="truncate">Control de Versiones</span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 uppercase">
+                Super Admin
               </span>
             </button>
           </>

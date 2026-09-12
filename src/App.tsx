@@ -17,6 +17,7 @@ import { AdminCitizensDirectoryView } from './components/admin/AdminCitizensDire
 import { ConfigView } from './components/config/ConfigView';
 import { CustomizationSettingsView } from './components/config/CustomizationSettingsView';
 import { AdminMaintenanceView } from './components/admin/AdminMaintenanceView';
+import { AdminVersionControlView } from './components/admin/AdminVersionControlView';
 import { NewTicketModal } from './components/tickets/NewTicketModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
 import { BackendSwitcherModal } from './components/layout/BackendSwitcherModal';
@@ -439,6 +440,11 @@ const MainAppContent: React.FC = () => {
                   categories={categories}
                   onCategoriesUpdated={handleCategoriesUpdated}
                 />
+              )}
+
+              {/* 8. Control de Versiones del Sitio (Super Admin Only) */}
+              {currentView === 'control-versiones' && (
+                <AdminVersionControlView currentUser={currentUser} />
               )}
 
               {/* 6. Personalización & Diseño (Front-end & Back-end, Colores, Dimensiones y Tipografía) */}

@@ -20,10 +20,19 @@ import { MOCK_TICKETS, MOCK_CURRENT_USER } from '../data/mockData';
 import { CATEGORIAS_SISTEMA } from '../config/categories';
 import { SECTORES_RESIDENCIA } from '../config/sectors';
 import { getCategoryPrefix } from '../utils/ticketCodeGenerator';
+import { generateTicketCoordinates, getSectorCoordinates } from '../utils/geoCoordinates';
 
 const STORAGE_KEY_TICKETS = 'ticketing_app_tickets_v1';
 const STORAGE_KEY_AUTH = 'ticketing_app_auth_v1';
 const STORAGE_KEY_TOKEN = 'ticketing_app_jwt_token_v1';
+
+// Cross-tab broadcast channel for ERP/CRM real-time synchronization
+let syncChannel: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+  try {
+    syncChannel = new BroadcastChannel('ticketing_erp_crm_channel');
+  } catch {}
+}
 
 export function getAuthToken(): string | null {
   try {
@@ -168,8 +177,14 @@ export const ticketService = {
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
-          saveStoredTickets(json.data);
-          return json.data;
+          // Merge with any local optimistic tickets not yet returned by the server
+          const currentLocal = getStoredTickets();
+          const pending = currentLocal.filter(
+            (loc) => !json.data.some((srv: Ticket) => srv.id === loc.id || srv.numeroRegistro === loc.numeroRegistro)
+          );
+          const merged = [...pending, ...json.data];
+          saveStoredTickets(merged);
+          return merged;
         }
       }
     } catch {
@@ -410,124 +425,192 @@ export const ticketService = {
     return { success: true, found: false };
   },
 
-  // Create Ticket with backend Zod validation response handling
+  // Create Ticket with instant optimistic synchronization BEFORE server update
   async createTicket(
-    ticketData: CreateTicketInput | Partial<Ticket>
+    ticketData: CreateTicketInput | Partial<Ticket>,
+    onOptimisticSync?: (optimisticTicket: Ticket) => void
   ): Promise<{ success: boolean; data?: Ticket; message?: string; errors?: any[] }> {
+    // 1. Determine Category, Prefix, and Monotonic Consecutive Security Counter
+    const catObj = CATEGORIAS_SISTEMA.find(
+      (c) => c.id === ticketData.categoriaId || c.nombre === ticketData.categoriaNombre
+    );
+    const categoriaNombre = catObj?.nombre || ticketData.categoriaNombre || 'General';
+    const catPrefix = getCategoryPrefix(categoriaNombre, ticketData.categoriaId, catObj?.prefijo);
+    const year = new Date().getFullYear();
+
+    const existingTickets = getStoredTickets();
+    const catCount =
+      existingTickets.filter(
+        (t) => t.id.startsWith(`${catPrefix}-`) || t.categoriaId === ticketData.categoriaId
+      ).length + 1;
+    const formattedNum = `${catPrefix}-${year}-${String(catCount).padStart(3, '0')}`;
+
+    const now = new Date();
+    const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
+    const nowDate = now.toISOString().split('T')[0];
+    const nowTime = now.toTimeString().split(' ')[0];
+
+    const consecutivoSeguridad =
+      (ticketData as any).consecutivoSeguridad ||
+      `CS-${year}-${catPrefix}-${String(Date.now()).slice(-5)}`;
+
+    const sectorStr = ticketData.sectorNombre || 'Altos de Las Cumbres';
+    const resolvedCoords =
+      ticketData.ubicacionLat !== undefined &&
+      ticketData.ubicacionLng !== undefined &&
+      ticketData.ubicacionLat !== 0
+        ? { lat: ticketData.ubicacionLat, lng: ticketData.ubicacionLng }
+        : generateTicketCoordinates(sectorStr, formattedNum);
+
+    const rep = ticketData.reportante || {
+      nombre: 'Ciudadano Solicitante',
+      apellido: '',
+      cedula: '8-000-000',
+      telefono: '',
+      email: '',
+      genero: 'otro' as const,
+      edad: 35,
+      sector: sectorStr,
+    };
+
+    const formattedAdjuntos: Adjunto[] = (ticketData.adjuntos || []).map((a: any, idx: number) => ({
+      id: a.id || `att-${Date.now()}-${idx}`,
+      ticketId: formattedNum,
+      tipo: a.tipo || 'foto',
+      nombre: a.nombre || `Adjunto ${idx + 1}`,
+      url: a.url || '',
+      thumbnailUrl: a.thumbnailUrl,
+      tamanoBytes: a.tamanoBytes || 1024000,
+      fechaSubida: nowStr,
+    }));
+
+    // 2. Build full authoritative Ticket object
+    const optimisticTicket: Ticket = {
+      id: formattedNum,
+      numeroRegistro: formattedNum,
+      consecutivoSeguridad,
+      tipoReporte: catObj?.nombre || ticketData.tipoReporte || categoriaNombre,
+      asunto: (ticketData.asunto || 'Incidencia Comunitaria').trim(),
+      descripcion: (ticketData.descripcion || '').trim(),
+      categoriaId: ticketData.categoriaId || 'cat-1',
+      categoriaNombre,
+      estado: 'abierto',
+      prioridad: ticketData.prioridad || 'media',
+      sectorId: sectorStr,
+      sectorNombre: sectorStr,
+      ubicacionLat: resolvedCoords.lat,
+      ubicacionLng: resolvedCoords.lng,
+      direccionDetallada: ticketData.direccionDetallada || sectorStr,
+      lugarRegistro: 'Portal Digital Comunal',
+      canalIntake: 'Formulario Web Especializado',
+      canalRadicacion: 'web_portal',
+      fechaCreacion: nowDate,
+      horaCreacion: nowTime,
+      fechaActualizacion: nowStr,
+      funcionarioRegistro: (ticketData as any).creadoPor || 'Sistema Web (Ciudadano)',
+      reportante: {
+        nombre: rep.nombre.trim(),
+        apellido: (rep.apellido || '').trim(),
+        cedula: (rep.cedula || 'N/A').trim(),
+        telefono: rep.telefono || '',
+        email: rep.email || '',
+        genero: rep.genero || 'otro',
+        edad: rep.edad || 35,
+        sector: sectorStr,
+        registradoEnPadron: true,
+      },
+      adjuntos: formattedAdjuntos,
+      trazabilidad: [
+        {
+          id: `tr-${Date.now()}-1`,
+          ticketId: formattedNum,
+          tipoEvento: 'creacion',
+          fechaHora: nowStr,
+          responsable: (ticketData as any).creadoPor || 'Sistema Web (Ciudadano)',
+          rolResponsable: 'Portal de Entrada',
+          nota: `[Consecutivo de Seguridad: ${consecutivoSeguridad}] Reporte de ${categoriaNombre} radicado por ${rep.nombre} en sector ${sectorStr}. Secuencia inviolable auditada.`,
+          estadoNuevo: 'abierto',
+          canalInteraccion: 'web',
+          minutosConsumidos: 2,
+        },
+      ],
+      datosEspecificosReporte: (ticketData as any).datosEspecificosReporte,
+      codigoRegistroEnsa: (ticketData as any).codigoRegistroEnsa || undefined,
+      canalNotificacionCopia: (ticketData as any).canalNotificacionCopia || 'ambos',
+    };
+
+    // 3. SYNCHRONIZE EVERYTHING LOCALLY BEFORE UPDATING THE SERVER
+    const current = getStoredTickets();
+    const updatedLocal = [
+      optimisticTicket,
+      ...current.filter((t) => t.id !== optimisticTicket.id && t.numeroRegistro !== optimisticTicket.numeroRegistro),
+    ];
+    saveStoredTickets(updatedLocal);
+
+    // Call immediate React state updater if passed
+    if (onOptimisticSync) {
+      try {
+        onOptimisticSync(optimisticTicket);
+      } catch (err) {
+        console.warn('Error in onOptimisticSync:', err);
+      }
+    }
+
+    // Trigger event bus, CustomEvents, and BroadcastChannel immediately
+    this.triggerUpdateEvent(optimisticTicket);
+
+    // 4. NOW UPDATE ON THE SERVER
     try {
+      const payload = {
+        ...ticketData,
+        id: formattedNum,
+        numeroRegistro: formattedNum,
+        consecutivoSeguridad,
+        ubicacionLat: resolvedCoords.lat,
+        ubicacionLng: resolvedCoords.lng,
+      };
+
       const res = await fetch('/api/tickets', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(ticketData),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
 
-      if (res.ok && json.success) {
-        const current = getStoredTickets();
-        current.unshift(json.data);
-        saveStoredTickets(current);
+      if (res.ok && json.success && json.data) {
+        // Reconcile optimistic ticket with server-returned ticket
+        const reconciled = getStoredTickets().map((t) =>
+          t.id === optimisticTicket.id || t.numeroRegistro === optimisticTicket.numeroRegistro
+            ? json.data
+            : t
+        );
+        saveStoredTickets(reconciled);
+        this.triggerUpdateEvent(json.data);
         return {
           success: true,
           data: json.data,
-          message: json.message,
+          message: json.message || `Ticket ${json.data.numeroRegistro} radicado y guardado en servidor.`,
         };
       }
 
-      return {
-        success: false,
-        message: json.message || 'Error al crear el ticket.',
-        errors: json.errors,
-      };
-    } catch (err: any) {
-      // Client-side fallback
-      const tickets = getStoredTickets();
-      const prefix = getCategoryPrefix(ticketData.categoriaNombre, ticketData.categoriaId);
-      const year = new Date().getFullYear();
-      const catCount = tickets.filter(t => t.id.startsWith(`${prefix}-`)).length + 1;
-      const formattedNum = `${prefix}-${year}-${String(catCount).padStart(3, '0')}`;
-      const now = new Date();
-      const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
-      const consecutivoSeguridad =
-        (ticketData as any).consecutivoSeguridad ||
-        `CS-${year}-${prefix}-${String(Date.now()).slice(-5)}`;
-
-      const formattedAdjuntos: Adjunto[] = (ticketData.adjuntos || []).map((a: any, idx: number) => ({
-        id: a.id || `att-${Date.now()}-${idx}`,
-        ticketId: formattedNum,
-        tipo: a.tipo || 'foto',
-        nombre: a.nombre || `Adjunto ${idx + 1}`,
-        url: a.url || '',
-        fechaSubida: nowStr,
-      }));
-
-      const rep = ticketData.reportante || {
-        nombre: 'Ciudadano Solicitante',
-        apellido: '',
-        cedula: '8-000-000',
-        genero: 'femenino',
-        edad: 35,
-        sector: ticketData.sectorNombre || 'Altos de Las Cumbres',
-      };
-
-      const newTicket: Ticket = {
-        id: formattedNum,
-        numeroRegistro: formattedNum,
-        consecutivoSeguridad,
-        tipoReporte: ticketData.tipoReporte || ticketData.categoriaNombre || 'Alumbrado Eléctrico',
-        asunto: ticketData.asunto || 'Sin asunto',
-        descripcion: ticketData.descripcion || '',
-        categoriaId: ticketData.categoriaId || 'alumbrado-electrico',
-        categoriaNombre: ticketData.categoriaNombre || 'Alumbrado Eléctrico',
-        estado: 'abierto',
-        prioridad: ticketData.prioridad || 'media',
-        sectorId: ticketData.sectorNombre || 'Altos de Las Cumbres',
-        sectorNombre: ticketData.sectorNombre || 'Altos de Las Cumbres',
-        ubicacionLat: ticketData.ubicacionLat || 9.0834,
-        ubicacionLng: ticketData.ubicacionLng || -79.5312,
-        direccionDetallada: ticketData.direccionDetallada || '',
-        lugarRegistro: 'Portal Web Ciudadano',
-        canalIntake: 'Formulario Digital Especializado',
-        canalRadicacion: 'web_portal',
-        fechaCreacion: now.toISOString().split('T')[0],
-        horaCreacion: now.toTimeString().split(' ')[0],
-        fechaActualizacion: nowStr,
-        funcionarioRegistro: (ticketData as any).creadoPor || 'Sistema Web (Ciudadano)',
-        reportante: {
-          nombre: rep.nombre,
-          apellido: rep.apellido || '',
-          cedula: rep.cedula,
-          telefono: rep.telefono || '',
-          email: rep.email || '',
-          genero: rep.genero || 'otro',
-          edad: rep.edad || 35,
-          sector: ticketData.sectorNombre || rep.sector || 'Altos de Las Cumbres',
-          registradoEnPadron: true,
-        },
-        adjuntos: formattedAdjuntos,
-        trazabilidad: [
-          {
-            id: `tr-${Date.now()}-1`,
-            ticketId: formattedNum,
-            tipoEvento: 'creacion',
-            fechaHora: nowStr,
-            responsable: (ticketData as any).creadoPor || 'Sistema Web (Ciudadano)',
-            rolResponsable: 'Portal Ciudadano',
-            nota: `[Consecutivo de Seguridad: ${consecutivoSeguridad}] Reporte de ${ticketData.categoriaNombre || 'Alumbrado Eléctrico'} radicado por ${rep.nombre} ${rep.apellido || ''} (Cédula: ${rep.cedula}). Auditoría anti-borrado registrada.`,
-            estadoNuevo: 'abierto',
-            canalInteraccion: 'web',
-            minutosConsumidos: 2,
-          },
-        ],
-        datosEspecificosReporte: (ticketData as any).datosEspecificosReporte,
-        codigoRegistroEnsa: (ticketData as any).codigoRegistroEnsa || undefined,
-        canalNotificacionCopia: (ticketData as any).canalNotificacionCopia || 'ambos',
-      };
-
-      tickets.unshift(newTicket);
-      saveStoredTickets(tickets);
-      return { success: true, data: newTicket, message: `Ticket ${formattedNum} generado exitosamente.` };
+      if (!res.ok) {
+        return {
+          success: true,
+          data: optimisticTicket,
+          message: json.message || 'Ticket sincronizado localmente.',
+          errors: json.errors,
+        };
+      }
+    } catch (serverErr: any) {
+      console.warn('Server update offline or delayed. Optimistic local ticket preserved:', serverErr);
     }
+
+    return {
+      success: true,
+      data: optimisticTicket,
+      message: `Ticket ${formattedNum} radicado y sincronizado en vivo.`,
+    };
   },
 
   // Add trace event with validation feedback
@@ -1149,15 +1232,23 @@ export const ticketService = {
       this.subscribers = this.subscribers.filter((cb) => cb !== callback);
     };
   },
-  triggerUpdateEvent() {
+  triggerUpdateEvent(ticket?: Ticket) {
     this.subscribers.forEach((cb) => {
       try {
         cb();
       } catch {}
     });
-    // Also dispatch custom browser event
+    // Also dispatch custom browser events for instant reactivity across all modules
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('ticket_db_updated'));
+      window.dispatchEvent(new CustomEvent('ticket_db_updated', { detail: { ticket } }));
+      if (ticket) {
+        window.dispatchEvent(new CustomEvent('ticket_created_live', { detail: { ticket } }));
+      }
+      try {
+        if (syncChannel) {
+          syncChannel.postMessage({ type: 'TICKET_SYNC_UPDATE', ticket });
+        }
+      } catch {}
     }
   },
 

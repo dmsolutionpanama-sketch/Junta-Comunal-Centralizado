@@ -42,6 +42,7 @@ import {
   X,
   User,
   Mail,
+  Flame,
 } from 'lucide-react';
 import { Ticket, CreateTicketInput, TicketStatus } from '../../types';
 import { CATEGORIAS_SISTEMA } from '../../config/categories';
@@ -49,6 +50,9 @@ import { SECTORES_RESIDENCIA } from '../../config/sectors';
 import { useTheme } from '../../context/ThemeContext';
 import { CategoryIcon } from '../common/CategoryIcon';
 import { InstitutionalBanner } from './InstitutionalBanner';
+import { PublicHeatmapMapView } from './PublicHeatmapMapView';
+import { getCategoryPrefix } from '../../utils/ticketCodeGenerator';
+import { generateTicketCoordinates } from '../../utils/geoCoordinates';
 import {
   ResponsiveContainer,
   BarChart,
@@ -71,6 +75,7 @@ interface CitizenIndexViewProps {
 
 export type CitizenTab =
   | 'registrar-incidencia'
+  | 'mapa-calor'
   | 'desempeno-sector'
   | 'estado-global'
   | 'listado-tickets';
@@ -238,15 +243,22 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
     setIsSubmitting(true);
     try {
       const categoriaObj = CATEGORIAS_SISTEMA.find((c) => c.id === reportCategoriaId);
-      const numeroRegistroGenerado = `TK-${new Date().getFullYear()}-${String(tickets.length + 1).padStart(3, '0')}`;
+      const categoriaNombre = categoriaObj?.nombre || 'General';
+      const catPrefix = getCategoryPrefix(categoriaNombre, reportCategoriaId, categoriaObj?.prefijo);
+      const year = new Date().getFullYear();
+      const catCount = tickets.filter((t) => t.id.startsWith(`${catPrefix}-`) || t.categoriaId === reportCategoriaId).length + 1;
+      const numeroRegistroGenerado = `${catPrefix}-${year}-${String(catCount).padStart(3, '0')}`;
+      const coords = generateTicketCoordinates(citizenSector, numeroRegistroGenerado);
 
       const newTicketInput: CreateTicketInput = {
         asunto: reportAsunto.trim(),
         descripcion: reportDescripcion.trim(),
         categoriaId: reportCategoriaId,
-        categoriaNombre: categoriaObj?.nombre || 'General',
+        categoriaNombre,
         prioridad: 'media',
         sectorNombre: citizenSector,
+        ubicacionLat: coords.lat,
+        ubicacionLng: coords.lng,
         direccionDetallada: reportDireccion.trim() || citizenSector,
         codigoRegistroEnsa: reportCategoriaId === 'cat-1' ? codigoRegistroEnsa.trim() : undefined,
         canalNotificacionCopia: canalNotificacionCopia,
@@ -492,7 +504,22 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
             </span>
           </button>
 
-          {/* Opción 2: Desempeño por Área y Sector */}
+          {/* Opción 2: Mapa Territorial & Focos de Calor */}
+          <button
+            type="button"
+            id="tab-mapa-calor"
+            onClick={() => setActiveTab('mapa-calor')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'mapa-calor'
+                ? 'bg-red-600 text-white shadow-md shadow-red-500/20'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Flame className="w-4 h-4 text-red-500" />
+            <span>Mapa Territorial y Calor Comunal 🔥</span>
+          </button>
+
+          {/* Opción 3: Desempeño por Área y Sector */}
           <button
             type="button"
             id="tab-desempeno-sector"
@@ -507,7 +534,7 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
             <span>Desempeño por Área y Sector</span>
           </button>
 
-          {/* Opción 3: Estado Global (Gráficos) */}
+          {/* Opción 4: Estado Global (Gráficos) */}
           <button
             type="button"
             id="tab-estado-global"
@@ -522,7 +549,7 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
             <span>Estado Global (Gráficos)</span>
           </button>
 
-          {/* Opción 4: Listado de Tickets */}
+          {/* Opción 5: Listado de Tickets */}
           <button
             type="button"
             id="tab-listado-tickets"
@@ -594,15 +621,25 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                       {copiedCode ? '¡Copiado!' : 'Copiar'}
                     </button>
                   </div>
-                  <div className="pt-2 flex justify-center gap-2">
+                  <div className="pt-2 flex flex-wrap justify-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
                         setCreatedTicketCode(null);
                       }}
-                      className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700"
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700 shadow-xs"
                     >
-                      Radicar Otro Reporte
+                      Radicar Otro Reporte ➕
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('mapa-calor');
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-red-700 shadow-xs"
+                    >
+                      <Flame className="w-3.5 h-3.5" />
+                      <span>Ver en Mapa de Calor Comunal 🔥</span>
                     </button>
                     <button
                       type="button"
@@ -610,9 +647,9 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
                         setSearchQuery(createdTicketCode);
                         setActiveTab('listado-tickets');
                       }}
-                      className="px-4 py-2 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 border border-emerald-300 rounded-xl text-xs font-bold cursor-pointer"
+                      className="px-4 py-2 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-50 dark:hover:bg-slate-800"
                     >
-                      Ver en Listado de Tickets
+                      Ver en Listado de Tickets 📋
                     </button>
                   </div>
                 </div>
@@ -832,7 +869,17 @@ export const CitizenIndexView: React.FC<CitizenIndexViewProps> = ({
         )}
 
         {/* ============================================================
-            OPCIÓN DEL MENÚ 2: DESEMPEÑO POR ÁREA DE SERVICIO Y ATENCIÓN POR SECTOR
+            OPCIÓN DEL MENÚ 2: MAPA TERRITORIAL Y FOCOS DE CALOR COMUNITARIOS
+        ============================================================ */}
+        {activeTab === 'mapa-calor' && (
+          <PublicHeatmapMapView
+            tickets={tickets}
+            onSelectTicket={(ticket) => setSelectedTicket(ticket)}
+          />
+        )}
+
+        {/* ============================================================
+            OPCIÓN DEL MENÚ 3: DESEMPEÑO POR ÁREA DE SERVICIO Y ATENCIÓN POR SECTOR
         ============================================================ */}
         {activeTab === 'desempeno-sector' && (
           <div className="space-y-8 animate-in fade-in duration-200">

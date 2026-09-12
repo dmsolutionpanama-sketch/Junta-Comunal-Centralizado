@@ -1415,8 +1415,12 @@ async function startServer() {
         prioridad: body.prioridad || 'media',
         sectorId: sectorMatched,
         sectorNombre: sectorMatched,
-        ubicacionLat: body.ubicacionLat || 9.082,
-        ubicacionLng: body.ubicacionLng || -79.528,
+        ubicacionLat: (body.ubicacionLat !== undefined && !isNaN(body.ubicacionLat) && body.ubicacionLat !== 0)
+          ? body.ubicacionLat
+          : (SECTOR_COORDS_MAP[sectorMatched]?.lat || 9.0834),
+        ubicacionLng: (body.ubicacionLng !== undefined && !isNaN(body.ubicacionLng) && body.ubicacionLng !== 0)
+          ? body.ubicacionLng
+          : (SECTOR_COORDS_MAP[sectorMatched]?.lng || -79.5312),
         direccionDetallada: body.direccionDetallada || '',
         lugarRegistro: 'Portal Digital Comunal',
         canalIntake: 'Formulario Web Especializado',

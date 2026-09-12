@@ -103,17 +103,51 @@ const MainAppContent: React.FC = () => {
       });
     });
 
-    // Also listen to window event 'ticket_db_updated'
-    const handleDbUpdated = () => {
-      ticketService.getAllTickets().then((data) => {
-        setTickets(data);
-      });
+    // Also listen to window event 'ticket_db_updated' and 'ticket_created_live' for instant reactivity
+    const handleDbUpdated = (e: any) => {
+      if (e?.detail?.ticket) {
+        const t = e.detail.ticket as Ticket;
+        setTickets((prev) => [
+          t,
+          ...prev.filter((item) => item.id !== t.id && item.numeroRegistro !== t.numeroRegistro),
+        ]);
+      } else {
+        ticketService.getAllTickets().then((data) => {
+          setTickets(data);
+        });
+      }
     };
     window.addEventListener('ticket_db_updated', handleDbUpdated);
+    window.addEventListener('ticket_created_live', handleDbUpdated);
+
+    // Cross-tab BroadcastChannel for instant multi-window ERP / CRM synchronization
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        channel = new BroadcastChannel('ticketing_erp_crm_channel');
+        channel.onmessage = (msg) => {
+          if (msg.data?.ticket) {
+            const t = msg.data.ticket as Ticket;
+            setTickets((prev) => [
+              t,
+              ...prev.filter((item) => item.id !== t.id && item.numeroRegistro !== t.numeroRegistro),
+            ]);
+          } else {
+            ticketService.getAllTickets().then((data) => setTickets(data));
+          }
+        };
+      } catch {}
+    }
 
     return () => {
       unsubscribe();
       window.removeEventListener('ticket_db_updated', handleDbUpdated);
+      window.removeEventListener('ticket_created_live', handleDbUpdated);
+      if (channel) {
+        try {
+          channel.close();
+        } catch {}
+      }
     };
   }, [activeScreen]);
 
@@ -200,9 +234,20 @@ const MainAppContent: React.FC = () => {
   // Ticket Operations
   const handleCreateTicket = async (ticketInput: CreateTicketInput): Promise<boolean> => {
     try {
-      const res = await ticketService.createTicket(ticketInput);
+      const res = await ticketService.createTicket(ticketInput, (optimisticTicket) => {
+        // Synchronize React state instantly BEFORE server call completes!
+        setTickets((prev) => [
+          optimisticTicket,
+          ...prev.filter((t) => t.id !== optimisticTicket.id && t.numeroRegistro !== optimisticTicket.numeroRegistro),
+        ]);
+      });
       if (res.success && res.data) {
-        setTickets((prev) => [res.data!, ...prev]);
+        setTickets((prev) => {
+          const filtered = prev.filter(
+            (t) => t.id !== res.data!.id && t.numeroRegistro !== res.data!.numeroRegistro
+          );
+          return [res.data!, ...filtered];
+        });
         analytics.trackTicketCreated(res.data.id, res.data.categoriaId, res.data.prioridad);
         return true;
       }
